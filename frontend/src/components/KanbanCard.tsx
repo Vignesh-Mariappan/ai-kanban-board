@@ -41,8 +41,7 @@ export const KanbanCard = ({ card, onEdit, onDelete }: KanbanCardProps) => {
         "transition-all duration-150",
         isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
       )}
-      {...attributes}
-      {...listeners}
+      {...(isEditing ? {} : { ...attributes, ...listeners })}
       data-testid={`card-${card.id}`}
     >
       {isEditing ? (
@@ -90,7 +89,11 @@ export const KanbanCard = ({ card, onEdit, onDelete }: KanbanCardProps) => {
           <div className="flex flex-wrap items-center gap-1">
             <button
               type="button"
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setTitle(card.title);
+                setDetails(card.details);
+                setIsEditing(true);
+              }}
               className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--primary-blue)] transition hover:border-[var(--stroke)]"
               aria-label={`Edit ${card.title}`}
             >

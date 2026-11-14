@@ -53,6 +53,24 @@ describe("SignInGate", () => {
     expect(sessionStorage.getItem("kanban-mvp-auth")).toBeNull();
   });
 
+  it("rejects non-ASCII credentials without getting stuck", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: async () => ({ detail: "Invalid username or password" }),
+    } as Response);
+    renderGate();
+
+    await userEvent.type(await screen.findByLabelText("Username"), "Łukasz");
+    await userEvent.type(screen.getByLabelText("Password"), "password");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Incorrect username or password."
+    );
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
+  });
+
   it("restores a signed-in session and clears it on sign-out", async () => {
     const user = userEvent.setup();
     const firstRender = renderGate();

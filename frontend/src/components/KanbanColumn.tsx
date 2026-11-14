@@ -42,14 +42,15 @@ export const KanbanColumn = ({
             </span>
           </div>
           <input
+            key={column.title}
             defaultValue={column.title}
             onBlur={(event) => {
               const title = event.currentTarget.value.trim();
-              if (!title) {
-                event.currentTarget.value = column.title;
-              } else if (title !== column.title) {
+              if (title && title !== column.title) {
                 onRename(column.id, title);
               }
+              // Show the saved title; a successful rename remounts the input via its key.
+              event.currentTarget.value = column.title;
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {

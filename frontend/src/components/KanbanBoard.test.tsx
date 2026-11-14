@@ -1,11 +1,43 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, vi } from "vitest";
+import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import type { ReactNode } from "react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import { KanbanColumn } from "@/components/KanbanColumn";
 import { initialData } from "@/lib/kanban";
 
 const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
+
+const noop = () => {};
+
+const TestDndContext = ({ children }: { children: ReactNode }) => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+  return <DndContext sensors={sensors}>{children}</DndContext>;
+};
+
+const renderColumn = (column = initialData.columns[0], cards = initialData.cards) => {
+  const element = (nextColumn: typeof column, nextCards: typeof cards): ReactNode => (
+    <TestDndContext>
+      <KanbanColumn
+        column={nextColumn}
+        cards={nextColumn.cardIds.map((cardId) => nextCards[cardId])}
+        onRename={noop}
+        onAddCard={noop}
+        onEditCard={noop}
+        onDeleteCard={noop}
+      />
+    </TestDndContext>
+  );
+  const result = render(element(column, cards));
+  return {
+    rerender: (nextColumn: typeof column, nextCards: typeof cards) =>
+      result.rerender(element(nextColumn, nextCards)),
+  };
+};
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -33,7 +65,7 @@ describe("KanbanBoard", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "New Name");
     await userEvent.tab();
-    expect(input).toHaveValue("New Name");
+    expect(within(column).getByLabelText("Column title")).toHaveValue("New Name");
   });
 
   it("adds and removes a card", async () => {
@@ -120,5 +152,59 @@ describe("KanbanBoard", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Database unavailable");
     expect(screen.getByTestId("card-card-1")).toBeInTheDocument();
+  });
+
+  it("shows a column title changed outside the input, such as by the AI", () => {
+    const { rerender } = renderColumn();
+    rerender({ ...initialData.columns[0], title: "Renamed by AI" }, initialData.cards);
+
+    expect(screen.getByLabelText("Column title")).toHaveValue("Renamed by AI");
+  });
+
+  it("restores the saved column title when a rename fails to save", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({ detail: "Database unavailable" }),
+      })
+    );
+    render(<KanbanBoard initialBoard={initialData} authHeader="Basic token" />);
+    const input = within(getFirstColumn()).getByLabelText("Column title");
+    await userEvent.clear(input);
+    await userEvent.type(input, "Rejected name");
+    await userEvent.tab();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Database unavailable");
+    expect(input).toHaveValue("Backlog");
+  });
+
+  it("opens the card editor with the latest card text", async () => {
+    const { rerender } = renderColumn();
+    const card = screen.getByTestId("card-card-1");
+    await userEvent.click(within(card).getByRole("button", { name: "Edit Align roadmap themes" }));
+    await userEvent.type(within(card).getByLabelText("Edit card title"), " draft");
+    await userEvent.click(within(card).getByRole("button", { name: "Cancel editing" }));
+
+    rerender(initialData.columns[0], {
+      ...initialData.cards,
+      "card-1": { id: "card-1", title: "Edited by AI", details: "New details" },
+    });
+    await userEvent.click(within(card).getByRole("button", { name: "Edit Edited by AI" }));
+
+    expect(within(card).getByLabelText("Edit card title")).toHaveValue("Edited by AI");
+    expect(within(card).getByLabelText("Edit card details")).toHaveValue("New details");
+  });
+
+  it("disables dragging a card while it is being edited", async () => {
+    renderColumn();
+    const card = screen.getByTestId("card-card-1");
+    expect(card).toHaveAttribute("aria-roledescription", "sortable");
+
+    await userEvent.click(within(card).getByRole("button", { name: "Edit Align roadmap themes" }));
+
+    expect(card).not.toHaveAttribute("aria-roledescription");
+    expect(within(card).getByLabelText("Edit card title")).toBeEnabled();
   });
 });

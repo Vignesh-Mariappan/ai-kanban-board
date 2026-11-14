@@ -26,6 +26,10 @@ describe("board API client", () => {
     );
   });
 
+  it("encodes non-Latin-1 credentials as UTF-8", () => {
+    expect(createBasicAuthHeader("Łukasz", "pw")).toBe("Basic xYF1a2Fzejpwdw==");
+  });
+
   it("loads a board with authorization", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

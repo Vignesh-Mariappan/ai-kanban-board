@@ -10,8 +10,10 @@ The JSON interchange shape is defined in [kanban-board.schema.json](kanban-board
 
 - `users`: `id` primary key and unique `username`. Do not store the Part 4 demo password in the database; it is not real authentication.
 - `boards`: `id` primary key and `user_id` unique, non-null foreign key to `users`. The unique constraint enforces one board per user.
-- `columns`: `id` primary key, `board_id` foreign key, editable `title`, and integer `position`; unique `(board_id, position)` preserves order.
-- `cards`: `id` primary key, `column_id` foreign key, `title`, `details`, and integer `position`; unique `(column_id, position)` preserves order and each card belongs to one column.
+- `columns`: primary key `(board_id, id)`, `board_id` foreign key, editable `title`, and integer `position`; unique `(board_id, position)` preserves order.
+- `cards`: primary key `(board_id, id)`, foreign key `(board_id, column_id)` to `columns`, `title`, `details`, and integer `position`; unique `(board_id, column_id, position)` preserves order and each card belongs to one column of its own board.
+
+Column and card IDs are scoped to their board, so every user's board can use the same five fixed column IDs and card IDs never collide across users. New users and boards get generated IDs when seeded.
 
 Enable SQLite foreign keys on every connection. Use cascading deletion from a board to its columns and from a column to its cards. A user's board is selected through `boards.user_id`; board ownership is never inferred from client-provided card or column IDs alone.
 
@@ -24,7 +26,7 @@ The five MVP column identities are fixed; application validation must reject add
 ## Validation rules
 
 - Each user has one board; the schema represents that board as a single object and SQLite enforces it with `UNIQUE(boards.user_id)`.
-- The MVP board has exactly five fixed column IDs. Column and card IDs are unique in their respective tables.
+- The MVP board has exactly five fixed column IDs. Column and card IDs are unique within their board.
 - Column and card positions are non-negative and gap-free, starting at zero after each update.
 - Every `cardIds` entry must identify one card in the same board, and every card must occur in exactly one column. Enforce these cross-reference rules in application validation and transactional writes; JSON Schema alone cannot assert object-key/reference equality.
 - Usernames are unique. IDs, titles, and usernames are non-empty; card details may be empty.
@@ -39,3 +41,5 @@ Track the schema version with SQLite `PRAGMA user_version`. Apply ordered, trans
 ## Implementation status
 
 The user approved this design before Part 6. The Part 6 backend initializes the schema at startup, seeds only when the authenticated user's board is absent, and applies full-board replacements transactionally. The Docker start scripts bind-mount host `data/` at `/data`; `DATABASE_PATH` defaults to `/data/kanban.sqlite3` in the image. The API contract is documented in [API.md](API.md).
+
+Migration `002_board_scoped_ids.sql` (schema version 2) rebuilds `columns` and `cards` with board-scoped keys and copies existing rows unchanged.

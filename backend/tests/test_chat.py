@@ -5,8 +5,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.chat import ChatRequest, InvalidChatOutput, build_chat_prompt, parse_chat_output
+from app.database import replace_board
 from app.main import create_app
 from app.openrouter import OpenRouterError
+from app.schemas import BoardData
 
 AUTH = ("user", "password")
 
@@ -173,6 +175,28 @@ def test_provider_failure_does_not_change_board(tmp_path: Path) -> None:
         assert response.json()["detail"] == "AI provider request failed"
         assert "private provider details" not in response.text
         assert client.get("/api/board", auth=AUTH).json() == original
+
+
+def test_chat_update_is_rejected_when_board_changed_during_request(tmp_path: Path) -> None:
+    database_path = tmp_path / "chat.sqlite3"
+
+    class EditingProvider:
+        def complete(self, prompt: str, *, json_mode: bool = False) -> str:
+            board = json.loads(prompt)["board"]
+            edited = json.loads(json.dumps(board))
+            edited["columns"][0]["title"] = "Edited by the user"
+            assert replace_board(database_path, "user", BoardData.model_validate(edited))
+            board["columns"][1]["title"] = "Renamed by AI"
+            return json.dumps({"response": "Renamed.", "board_update": board})
+
+    app = create_app(database_path=database_path, chat_provider=EditingProvider())
+    with TestClient(app) as client:
+        response = client.post("/api/chat", auth=AUTH, json={"question": "Rename it"})
+
+        assert response.status_code == 409
+        saved = client.get("/api/board", auth=AUTH).json()
+        assert saved["columns"][0]["title"] == "Edited by the user"
+        assert saved["columns"][1]["title"] == "Discovery"
 
 
 def test_chat_requires_authentication_and_valid_request(tmp_path: Path) -> None:

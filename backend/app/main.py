@@ -19,6 +19,7 @@ from app.chat import (
 from app.database import (
     DEFAULT_DATABASE_PATH,
     DEFAULT_SEED_PATH,
+    BoardChangedError,
     initialize_database,
     load_board,
     replace_board,
@@ -110,8 +111,16 @@ def create_app(
             raise HTTPException(status_code=502, detail="AI response was invalid") from None
 
         board_updated = result.board_update is not None
-        if board_updated and not replace_board(db_path, username, result.board_update):
-            raise HTTPException(status_code=404, detail="Board not found")
+        try:
+            if board_updated and not replace_board(
+                db_path, username, result.board_update, expected_board=board
+            ):
+                raise HTTPException(status_code=404, detail="Board not found")
+        except BoardChangedError:
+            raise HTTPException(
+                status_code=409,
+                detail="The board changed while the assistant was responding. Please try again.",
+            ) from None
         return ChatResult(response=result.response, board_updated=board_updated)
 
 

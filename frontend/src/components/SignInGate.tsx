@@ -81,8 +81,8 @@ export const SignInGate = ({ children }: SignInGateProps) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError("");
-    const nextAuthHeader = createBasicAuthHeader(username, password);
     try {
+      const nextAuthHeader = createBasicAuthHeader(username, password);
       const board = await fetchBoard(nextAuthHeader);
       sessionStorage.setItem(sessionKey, nextAuthHeader);
       setLoadedSession({ authHeader: nextAuthHeader, board });

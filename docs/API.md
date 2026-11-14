@@ -20,7 +20,7 @@ Requires HTTP Basic authentication. Replaces the authenticated user's complete b
 
 Requires HTTP Basic authentication. Accepts a non-empty `question` and optional conversation `history`, an ordered list of user and assistant messages. The backend loads the authenticated user's current board and sends it with the question and history to the AI service.
 
-Returns `{"response":"...","board_updated":false}` when no board change is proposed. When the AI returns a complete valid board update, the backend validates and saves it transactionally, then returns `board_updated: true`. Invalid AI output or provider errors return `502` without changing the saved board; missing OpenRouter configuration returns `503`.
+Returns `{"response":"...","board_updated":false}` when no board change is proposed. When the AI returns a complete valid board update, the backend validates and saves it transactionally, then returns `board_updated: true`. Invalid AI output or provider errors return `502` without changing the saved board; missing OpenRouter configuration returns `503`. If the saved board changes while the AI is responding, the AI update is discarded and the route returns `409` so the user's edits are not overwritten.
 
 Chat history is held in the current browser tab's `sessionStorage`. It is sent with chat requests, is retained across reloads in that tab, and is cleared on sign-out or tab close. It is not stored in SQLite.
 
@@ -30,6 +30,7 @@ When OpenRouter is accessed through a TLS-inspecting network, provide the organi
 
 - `401 Unauthorized`: missing or invalid Basic credentials.
 - `404 Not Found`: authenticated user has no board.
+- `409 Conflict`: the board changed while the AI was responding; the AI update was not applied.
 - `422 Unprocessable Entity`: invalid board payload.
 - `502 Bad Gateway`: AI provider failure or invalid AI response.
 - `503 Service Unavailable`: OpenRouter is not configured.

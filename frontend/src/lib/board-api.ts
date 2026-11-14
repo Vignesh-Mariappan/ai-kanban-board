@@ -10,8 +10,10 @@ export class BoardApiError extends Error {
   }
 }
 
-export const createBasicAuthHeader = (username: string, password: string) =>
-  `Basic ${btoa(`${username}:${password}`)}`;
+export const createBasicAuthHeader = (username: string, password: string) => {
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  return `Basic ${btoa(String.fromCharCode(...bytes))}`;
+};
 
 const requestBoard = async (
   authorization: string,

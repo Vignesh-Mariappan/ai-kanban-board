@@ -81,17 +81,20 @@ def test_board_is_seeded_and_reads_in_saved_order(
     assert len(response.json()["cards"]) == 8
     assert database_path.is_file()
     with closing(sqlite3.connect(database_path)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
 
 
 def test_database_enforces_one_board_per_user(
     client: TestClient, database_path: Path
 ) -> None:
     with closing(sqlite3.connect(database_path)) as connection:
+        user_id = connection.execute(
+            "SELECT id FROM users WHERE username = 'user'"
+        ).fetchone()[0]
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
                 "INSERT INTO boards (id, user_id) VALUES (?, ?)",
-                ("board-extra", "user-1"),
+                ("board-extra", user_id),
             )
 
 
