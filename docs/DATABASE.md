@@ -8,8 +8,8 @@ The JSON interchange shape is defined in [kanban-board.schema.json](kanban-board
 
 ## Tables and constraints
 
-- `users`: `id` primary key and unique `username`. Do not store the Part 4 demo password in the database; it is not real authentication.
-- `boards`: `id` primary key and `user_id` unique, non-null foreign key to `users`. The unique constraint enforces one board per user.
+- `users`: `id` primary key, unique `username`, and `password_hash` (salted scrypt, `salt_hex:hash_hex`). Plain passwords are never stored.
+- `boards`: `id` primary key, non-null `user_id` foreign key to `users` (indexed, cascade delete), and non-blank `name`. A user can own any number of boards, listed in creation (`rowid`) order.
 - `columns`: primary key `(board_id, id)`, `board_id` foreign key, editable `title`, and integer `position`; unique `(board_id, position)` preserves order.
 - `cards`: primary key `(board_id, id)`, foreign key `(board_id, column_id)` to `columns`, `title`, `details`, and integer `position`; unique `(board_id, column_id, position)` preserves order and each card belongs to one column of its own board.
 
@@ -25,7 +25,6 @@ The five MVP column identities are fixed; application validation must reject add
 
 ## Validation rules
 
-- Each user has one board; the schema represents that board as a single object and SQLite enforces it with `UNIQUE(boards.user_id)`.
 - The MVP board has exactly five fixed column IDs. Column and card IDs are unique within their board.
 - Column and card positions are non-negative and gap-free, starting at zero after each update.
 - Every `cardIds` entry must identify one card in the same board, and every card must occur in exactly one column. Enforce these cross-reference rules in application validation and transactional writes; JSON Schema alone cannot assert object-key/reference equality.
@@ -34,7 +33,7 @@ The five MVP column identities are fixed; application validation must reject add
 
 ## Initialization and schema changes
 
-On backend startup, open the configured database, enable foreign keys, create tables if absent, and seed the MVP user and initial board only when no board exists for that user. Do not overwrite an existing board on restart.
+On backend startup, open the configured database, apply migrations, and create the demo user `user` / `password` with the example board only if that user does not exist (an existing demo user without a password hash gets one). Do not overwrite existing boards on restart. Registered users and new boards start with the five default columns and no cards.
 
 Track the schema version with SQLite `PRAGMA user_version`. Apply ordered, transactional migrations during startup before serving requests. Keep migrations in `backend/migrations/`; never rely on deleting the database to apply a schema change. Integration tests should use a temporary database path.
 
@@ -43,3 +42,5 @@ Track the schema version with SQLite `PRAGMA user_version`. Apply ordered, trans
 The user approved this design before Part 6. The Part 6 backend initializes the schema at startup, seeds only when the authenticated user's board is absent, and applies full-board replacements transactionally. The Docker start scripts bind-mount host `data/` at `/data`; `DATABASE_PATH` defaults to `/data/kanban.sqlite3` in the image. The API contract is documented in [API.md](API.md).
 
 Migration `002_board_scoped_ids.sql` (schema version 2) rebuilds `columns` and `cards` with board-scoped keys and copies existing rows unchanged.
+
+Migration `003_users_and_multiple_boards.sql` (schema version 3) adds `users.password_hash` and rebuilds `boards` without the one-board-per-user constraint, naming existing boards `Project board`. Migrations run with foreign keys disabled and `PRAGMA foreign_key_check` must pass before each commit.

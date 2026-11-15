@@ -1,6 +1,16 @@
+import { chatPath } from "@/lib/board-api";
 import type { BoardData } from "@/lib/kanban";
 
 export const CHAT_HISTORY_STORAGE_KEY = "kanban-mvp-chat-history";
+
+export const chatHistoryKey = (boardId: string) =>
+  `${CHAT_HISTORY_STORAGE_KEY}:${boardId}`;
+
+export const clearChatHistories = () => {
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith(CHAT_HISTORY_STORAGE_KEY))
+    .forEach((key) => sessionStorage.removeItem(key));
+};
 
 export type ChatMessage = {
   role: "user" | "assistant";
@@ -24,10 +34,11 @@ export class ChatApiError extends Error {
 
 export const sendChatMessage = async (
   authorization: string,
+  boardId: string,
   question: string,
   history: ChatMessage[]
 ): Promise<ChatResult> => {
-  const response = await fetch("/api/chat", {
+  const response = await fetch(chatPath(boardId), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

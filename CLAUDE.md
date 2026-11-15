@@ -40,8 +40,8 @@ docker build -t project-management-mvp .
 Single container: a multi-stage `Dockerfile` builds the Next.js app as a static export (`output: "export"`), then FastAPI serves `frontend/out` at `/` alongside the `/api/*` routes. Uvicorn listens on port 8000; host `data/` is mounted at `/data` for the SQLite file. The root `.env` (holding `OPENROUTER_API_KEY`) is passed at runtime, never baked into the image.
 
 Backend (`backend/app/`):
-- `main.py`: `create_app(database_path, seed_path, frontend_static_dir, chat_provider)` factory. Defaults come from env vars `DATABASE_PATH`, `KANBAN_SEED_PATH`, `FRONTEND_STATIC_DIR`. The lifespan hook initializes the DB. Auth is HTTP Basic against hardcoded `user` / `password` (local MVP only).
-- `database.py`: normalized SQLite tables. Migrations are ordered `backend/migrations/*.sql` files tracked via `PRAGMA user_version`. A missing board is seeded from `docs/kanban-board.example.json`. `PUT /api/board` replaces the whole board transactionally.
+- `main.py`: `create_app(database_path, seed_path, frontend_static_dir, chat_provider)` factory. Defaults come from env vars `DATABASE_PATH`, `KANBAN_SEED_PATH`, `FRONTEND_STATIC_DIR`. The lifespan hook initializes the DB. Auth is HTTP Basic verified against the `users` table (scrypt hashes in `passwords.py`); `POST /api/users` registers. The demo user `user` / `password` is seeded on startup (local MVP only).
+- `database.py`: normalized SQLite tables. Migrations are ordered `backend/migrations/*.sql` files tracked via `PRAGMA user_version`. Users own many boards. A newly seeded demo user gets `docs/kanban-board.example.json`; registered users and new boards start empty. All board routes are `/api/boards/{board_id}` and check ownership; `PUT` replaces the whole board transactionally.
 - `schemas.py`: Pydantic `BoardData` validation (exactly five fixed column IDs, every card in exactly one column, card map keys match IDs). Mirrors `docs/kanban-board.schema.json`.
 - `openrouter.py`: OpenRouter client (model `openai/gpt-oss-120b`), with optional custom CA bundle (`data/openrouter-ca.pem` or `OPENROUTER_CA_BUNDLE`).
 - `chat.py`: builds the prompt from the user's saved board, question, and history; parses structured output `{response, board_update?}`. A valid `board_update` is a complete board that gets saved; invalid output returns 502 and never mutates the board.
@@ -49,9 +49,10 @@ Backend (`backend/app/`):
 The chat provider is injectable through the `ChatProvider` protocol. Automated tests must never call OpenRouter: unit tests mock it, and `backend/test_app.py` is the Playwright server app with a deterministic fake provider keyed on phrases in the question (e.g. "create e2e card"). Playwright starts it via `uv run --directory ../backend uvicorn test_app:app` on port 8010 with a disposable DB at `frontend/test-results/playwright.sqlite3`.
 
 Frontend (`frontend/src/`):
-- `components/SignInGate.tsx`: sign-in screen; stores the Basic auth header in `sessionStorage` (tab-scoped).
+- `components/SignInGate.tsx`: sign-in and create-account screen; stores the Basic auth header in `sessionStorage` (tab-scoped) and loads the board list.
+- `components/BoardWorkspace.tsx`: board tabs, create/rename/delete, remembers the selected board in `sessionStorage`, and renders `KanbanBoard` keyed by board ID.
 - `components/KanbanBoard.tsx`: owns board state and a serialized save queue; every change PUTs the full board via `lib/board-api.ts`. Failed saves are surfaced and do not silently alter the displayed board.
-- `components/ChatSidebar.tsx`: bottom-right chat launcher and overlay; history lives in `sessionStorage` only (not SQLite) and the board refreshes from the API after an AI update.
+- `components/ChatSidebar.tsx`: bottom-right chat launcher and overlay; history lives in `sessionStorage` per board (not SQLite) and the board refreshes from the API after an AI update.
 - `lib/kanban.ts`: board types and move logic (drag and drop via `@dnd-kit`).
 
 API contract details are in `docs/API.md`; the DB design is in `docs/DATABASE.md`.

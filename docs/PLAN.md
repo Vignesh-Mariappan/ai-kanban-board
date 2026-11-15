@@ -192,3 +192,15 @@ Success criteria:
 - [x] The user can chat from the sidebar and see validated board updates without manually reloading.
 - [x] Updates persist and remain visible after reload; errors do not corrupt the board or lose the conversation response.
 - [x] The full test suite is repeatable without OpenRouter credentials or network access.
+
+## Part 11: User accounts and multiple boards
+
+- [x] Users register with a username and password (scrypt-hashed in SQLite) and sign in with those credentials; the demo `user` / `password` account is kept.
+- [x] Each user can create, rename, switch between, and delete boards; cards, columns, and AI chat are scoped to one board and to its owner.
+- [x] Migration 003 preserves existing data and moves board routes to `/api/boards/{board_id}`.
+
+Tests:
+- [x] Backend tests cover registration, credential checks, board CRUD, cross-user isolation, per-board chat, and migration of existing databases.
+- [x] Component tests cover account creation, board switching, create/rename/delete, and per-board saves and chat.
+- [x] Browser tests cover sign-up and sign-in with new credentials, and cards and chat staying separate across boards through reload.
+

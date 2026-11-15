@@ -1,10 +1,9 @@
 from contextlib import asynccontextmanager
-import hmac
 import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 
@@ -20,12 +19,18 @@ from app.database import (
     DEFAULT_DATABASE_PATH,
     DEFAULT_SEED_PATH,
     BoardChangedError,
+    create_board,
+    create_user,
+    delete_board,
     initialize_database,
+    list_boards,
     load_board,
+    rename_board,
     replace_board,
+    verify_user,
 )
 from app.openrouter import OpenRouterClient, OpenRouterConfigurationError, OpenRouterError
-from app.schemas import BoardData
+from app.schemas import BoardData, BoardName, BoardSummary, UserCreate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEMO_USERNAME = "user"
@@ -46,7 +51,7 @@ def create_app(
     )
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        initialize_database(db_path, board_seed_path, DEMO_USERNAME)
+        initialize_database(db_path, board_seed_path, DEMO_USERNAME, DEMO_PASSWORD)
         yield
 
     application = FastAPI(title="Kanban MVP", lifespan=lifespan)
@@ -57,42 +62,65 @@ def create_app(
     def authenticated_username(
         credentials: Annotated[HTTPBasicCredentials, Depends(security)],
     ) -> str:
-        username_matches = hmac.compare_digest(credentials.username, DEMO_USERNAME)
-        password_matches = hmac.compare_digest(credentials.password, DEMO_PASSWORD)
-        if not (username_matches and password_matches):
+        if not verify_user(db_path, credentials.username, credentials.password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password",
             )
         return credentials.username
 
-    @application.get("/api/board", response_model=BoardData)
-    def read_board(username: Annotated[str, Depends(authenticated_username)]) -> dict[str, object]:
-        board = load_board(db_path, username)
+    Username = Annotated[str, Depends(authenticated_username)]
+
+    def owned_board(username: str, board_id: str) -> dict[str, object]:
+        board = load_board(db_path, username, board_id)
         if board is None:
             raise HTTPException(status_code=404, detail="Board not found")
         return board
 
-    @application.put("/api/board", response_model=BoardData)
+    @application.post("/api/users", status_code=201)
+    def register_user(user: UserCreate) -> dict[str, str]:
+        if not create_user(db_path, user.username, user.password):
+            raise HTTPException(status_code=409, detail="That username is already taken")
+        return {"username": user.username}
+
+    @application.get("/api/boards", response_model=list[BoardSummary])
+    def read_boards(username: Username) -> list[dict[str, str]]:
+        return list_boards(db_path, username)
+
+    @application.post("/api/boards", response_model=BoardSummary, status_code=201)
+    def add_board(board_name: BoardName, username: Username) -> dict[str, str]:
+        return create_board(db_path, username, board_name.name)
+
+    @application.patch("/api/boards/{board_id}", response_model=BoardSummary)
+    def update_board_name(
+        board_id: str, board_name: BoardName, username: Username
+    ) -> dict[str, str]:
+        board = rename_board(db_path, username, board_id, board_name.name)
+        if board is None:
+            raise HTTPException(status_code=404, detail="Board not found")
+        return board
+
+    @application.delete("/api/boards/{board_id}", status_code=204)
+    def remove_board(board_id: str, username: Username) -> Response:
+        if not delete_board(db_path, username, board_id):
+            raise HTTPException(status_code=404, detail="Board not found")
+        return Response(status_code=204)
+
+    @application.get("/api/boards/{board_id}", response_model=BoardData)
+    def read_board(board_id: str, username: Username) -> dict[str, object]:
+        return owned_board(username, board_id)
+
+    @application.put("/api/boards/{board_id}", response_model=BoardData)
     def update_board(
-        board_data: BoardData,
-        username: Annotated[str, Depends(authenticated_username)],
+        board_id: str, board_data: BoardData, username: Username
     ) -> dict[str, object]:
-        if not replace_board(db_path, username, board_data):
+        if not replace_board(db_path, username, board_id, board_data):
             raise HTTPException(status_code=404, detail="Board not found")
-        board = load_board(db_path, username)
-        if board is None:
-            raise HTTPException(status_code=404, detail="Board not found")
-        return board
+        return owned_board(username, board_id)
 
-    @application.post("/api/chat", response_model=ChatResult)
-    def chat(
-        request: ChatRequest,
-        username: Annotated[str, Depends(authenticated_username)],
-    ) -> ChatResult:
-        board = load_board(db_path, username)
-        if board is None:
-            raise HTTPException(status_code=404, detail="Board not found")
+    @application.post("/api/boards/{board_id}/chat", response_model=ChatResult)
+    def chat(board_id: str, request: ChatRequest, username: Username) -> ChatResult:
+        board = owned_board(username, board_id)
 
         try:
             content = application.state.chat_provider.complete(
@@ -113,7 +141,7 @@ def create_app(
         board_updated = result.board_update is not None
         try:
             if board_updated and not replace_board(
-                db_path, username, result.board_update, expected_board=board
+                db_path, username, board_id, result.board_update, expected_board=board
             ):
                 raise HTTPException(status_code=404, detail="Board not found")
         except BoardChangedError:

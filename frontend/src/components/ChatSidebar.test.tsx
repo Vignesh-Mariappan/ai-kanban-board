@@ -2,12 +2,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, vi } from "vitest";
 import { ChatSidebar } from "@/components/ChatSidebar";
-import { CHAT_HISTORY_STORAGE_KEY } from "@/lib/chat-api";
+import { chatHistoryKey } from "@/lib/chat-api";
 import { initialData } from "@/lib/kanban";
 
 const renderChat = async (onBoardUpdated = vi.fn().mockResolvedValue(initialData)) => {
   const result = render(
-    <ChatSidebar authHeader="Basic token" onBoardUpdated={onBoardUpdated} />
+    <ChatSidebar authHeader="Basic token" boardId="board-1" onBoardUpdated={onBoardUpdated} />
   );
   await userEvent.click(screen.getByRole("button", { name: "Open board chat" }));
   return result;
@@ -21,7 +21,7 @@ afterEach(() => {
 describe("ChatSidebar", () => {
   it("starts closed, focuses the input on open, and preserves drafts when closed", async () => {
     const user = userEvent.setup();
-    render(<ChatSidebar authHeader="Basic token" onBoardUpdated={vi.fn()} />);
+    render(<ChatSidebar authHeader="Basic token" boardId="board-1" onBoardUpdated={vi.fn()} />);
     const launcher = screen.getByRole("button", { name: "Open board chat" });
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -57,7 +57,7 @@ describe("ChatSidebar", () => {
 
     expect(await screen.findByText("I can help with that.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/chat",
+      "/api/boards/board-1/chat",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -66,7 +66,7 @@ describe("ChatSidebar", () => {
         }),
       })
     );
-    expect(JSON.parse(sessionStorage.getItem(CHAT_HISTORY_STORAGE_KEY) ?? "[]")).toEqual([
+    expect(JSON.parse(sessionStorage.getItem(chatHistoryKey("board-1")) ?? "[]")).toEqual([
       { role: "user", content: "What should I prioritize?" },
       { role: "assistant", content: "I can help with that." },
     ]);

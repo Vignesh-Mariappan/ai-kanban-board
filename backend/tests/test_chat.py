@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.chat import ChatRequest, InvalidChatOutput, build_chat_prompt, parse_chat_output
-from app.database import replace_board
+from app.database import list_boards, replace_board
 from app.main import create_app
 from app.openrouter import OpenRouterError
 from app.schemas import BoardData
@@ -30,6 +30,10 @@ class FakeChatProvider:
 def _client(tmp_path: Path, provider: FakeChatProvider) -> TestClient:
     app = create_app(database_path=tmp_path / "chat.sqlite3", chat_provider=provider)
     return TestClient(app)
+
+
+def board_url(client: TestClient) -> str:
+    return f"/api/boards/{client.get('/api/boards', auth=AUTH).json()[0]['id']}"
 
 
 def test_prompt_includes_board_question_and_conversation_history() -> None:
@@ -102,12 +106,13 @@ def test_chat_uses_database_board_and_persists_valid_update(tmp_path: Path) -> N
         )
     )
     with _client(tmp_path, provider) as client:
-        original_board = client.get("/api/board", auth=AUTH).json()
+        url = board_url(client)
+        original_board = client.get(url, auth=AUTH).json()
         original_board["columns"][0]["title"] = "Updated Backlog"
-        assert client.put("/api/board", auth=AUTH, json=original_board).status_code == 200
+        assert client.put(url, auth=AUTH, json=original_board).status_code == 200
 
         response = client.post(
-            "/api/chat",
+            f"{url}/chat",
             auth=AUTH,
             json={
                 "question": "Move the roadmap task to In Progress",
@@ -124,7 +129,7 @@ def test_chat_uses_database_board_and_persists_valid_update(tmp_path: Path) -> N
             {"role": "user", "content": "We are prioritizing delivery."}
         ]
         assert provider.json_modes == [True]
-        saved = client.get("/api/board", auth=AUTH).json()
+        saved = client.get(url, auth=AUTH).json()
         assert saved["columns"][2]["cardIds"] == ["card-1"]
         assert saved["columns"][0]["title"] == "Updated Backlog"
 
@@ -132,15 +137,16 @@ def test_chat_uses_database_board_and_persists_valid_update(tmp_path: Path) -> N
 def test_chat_without_update_preserves_board(tmp_path: Path) -> None:
     provider = FakeChatProvider('{"response":"Your board looks good."}')
     with _client(tmp_path, provider) as client:
-        original = client.get("/api/board", auth=AUTH).json()
-        response = client.post("/api/chat", auth=AUTH, json={"question": "Any advice?"})
+        url = board_url(client)
+        original = client.get(url, auth=AUTH).json()
+        response = client.post(f"{url}/chat", auth=AUTH, json={"question": "Any advice?"})
 
         assert response.status_code == 200
         assert response.json() == {
             "response": "Your board looks good.",
             "board_updated": False,
         }
-        assert client.get("/api/board", auth=AUTH).json() == original
+        assert client.get(url, auth=AUTH).json() == original
 
 
 @pytest.mark.parametrize(
@@ -155,26 +161,28 @@ def test_invalid_model_output_does_not_change_board(
 ) -> None:
     provider = FakeChatProvider(content)
     with _client(tmp_path, provider) as client:
-        original = client.get("/api/board", auth=AUTH).json()
+        url = board_url(client)
+        original = client.get(url, auth=AUTH).json()
 
-        response = client.post("/api/chat", auth=AUTH, json={"question": "Change the board"})
+        response = client.post(f"{url}/chat", auth=AUTH, json={"question": "Change the board"})
 
         assert response.status_code == 502
         assert response.json()["detail"] == "AI response was invalid"
-        assert client.get("/api/board", auth=AUTH).json() == original
+        assert client.get(url, auth=AUTH).json() == original
 
 
 def test_provider_failure_does_not_change_board(tmp_path: Path) -> None:
     provider = FakeChatProvider(OpenRouterError("private provider details"))
     with _client(tmp_path, provider) as client:
-        original = client.get("/api/board", auth=AUTH).json()
+        url = board_url(client)
+        original = client.get(url, auth=AUTH).json()
 
-        response = client.post("/api/chat", auth=AUTH, json={"question": "Help"})
+        response = client.post(f"{url}/chat", auth=AUTH, json={"question": "Help"})
 
         assert response.status_code == 502
         assert response.json()["detail"] == "AI provider request failed"
         assert "private provider details" not in response.text
-        assert client.get("/api/board", auth=AUTH).json() == original
+        assert client.get(url, auth=AUTH).json() == original
 
 
 def test_chat_update_is_rejected_when_board_changed_during_request(tmp_path: Path) -> None:
@@ -185,16 +193,20 @@ def test_chat_update_is_rejected_when_board_changed_during_request(tmp_path: Pat
             board = json.loads(prompt)["board"]
             edited = json.loads(json.dumps(board))
             edited["columns"][0]["title"] = "Edited by the user"
-            assert replace_board(database_path, "user", BoardData.model_validate(edited))
+            board_id = list_boards(database_path, "user")[0]["id"]
+            assert replace_board(
+                database_path, "user", board_id, BoardData.model_validate(edited)
+            )
             board["columns"][1]["title"] = "Renamed by AI"
             return json.dumps({"response": "Renamed.", "board_update": board})
 
     app = create_app(database_path=database_path, chat_provider=EditingProvider())
     with TestClient(app) as client:
-        response = client.post("/api/chat", auth=AUTH, json={"question": "Rename it"})
+        url = board_url(client)
+        response = client.post(f"{url}/chat", auth=AUTH, json={"question": "Rename it"})
 
         assert response.status_code == 409
-        saved = client.get("/api/board", auth=AUTH).json()
+        saved = client.get(url, auth=AUTH).json()
         assert saved["columns"][0]["title"] == "Edited by the user"
         assert saved["columns"][1]["title"] == "Discovery"
 
@@ -202,12 +214,13 @@ def test_chat_update_is_rejected_when_board_changed_during_request(tmp_path: Pat
 def test_chat_requires_authentication_and_valid_request(tmp_path: Path) -> None:
     provider = FakeChatProvider('{"response":"ok"}')
     with _client(tmp_path, provider) as client:
-        assert client.post("/api/chat", json={"question": "Help"}).status_code == 401
+        url = board_url(client)
+        assert client.post(f"{url}/chat", json={"question": "Help"}).status_code == 401
         assert client.post(
-            "/api/chat", auth=("other", "password"), json={"question": "Help"}
+            f"{url}/chat", auth=("other", "password"), json={"question": "Help"}
         ).status_code == 401
         assert client.post(
-            "/api/chat", auth=AUTH, json={"question": "  "}
+            f"{url}/chat", auth=AUTH, json={"question": "  "}
         ).status_code == 422
         assert provider.prompts == []
 
@@ -215,3 +228,31 @@ def test_chat_requires_authentication_and_valid_request(tmp_path: Path) -> None:
 def test_chat_output_rejects_non_object_response() -> None:
     with pytest.raises(InvalidChatOutput):
         parse_chat_output('{"response":"   "}')
+
+
+def test_chat_reads_and_updates_only_the_selected_board(tmp_path: Path) -> None:
+    class AddCardProvider:
+        def __init__(self) -> None:
+            self.boards: list[dict[str, object]] = []
+
+        def complete(self, prompt: str, *, json_mode: bool = False) -> str:
+            board = json.loads(prompt)["board"]
+            self.boards.append(json.loads(json.dumps(board)))
+            board["cards"]["card-ai"] = {"id": "card-ai", "title": "AI card", "details": ""}
+            board["columns"][0]["cardIds"].append("card-ai")
+            return json.dumps({"response": "Added.", "board_update": board})
+
+    provider = AddCardProvider()
+    app = create_app(database_path=tmp_path / "chat.sqlite3", chat_provider=provider)
+    with TestClient(app) as client:
+        first_url = board_url(client)
+        first = client.get(first_url, auth=AUTH).json()
+        second_id = client.post("/api/boards", auth=AUTH, json={"name": "Second"}).json()["id"]
+        second_url = f"/api/boards/{second_id}"
+
+        response = client.post(f"{second_url}/chat", auth=AUTH, json={"question": "Add a card"})
+
+        assert response.status_code == 200
+        assert provider.boards[0]["cards"] == {}
+        assert list(client.get(second_url, auth=AUTH).json()["cards"]) == ["card-ai"]
+        assert client.get(first_url, auth=AUTH).json() == first

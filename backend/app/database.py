@@ -5,13 +5,27 @@ import sqlite3
 from typing import Iterator
 from uuid import uuid4
 
+from app.passwords import hash_password, verify_password
 from app.schemas import BoardData
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "kanban.sqlite3"
 DEFAULT_SEED_PATH = PROJECT_ROOT / "docs" / "kanban-board.example.json"
 MIGRATIONS_DIRECTORY = Path(__file__).resolve().parents[1] / "migrations"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+NEW_USER_BOARD_NAME = "My first board"
+EMPTY_BOARD = BoardData.model_validate(
+    {
+        "columns": [
+            {"id": "col-backlog", "title": "Backlog", "cardIds": []},
+            {"id": "col-discovery", "title": "Discovery", "cardIds": []},
+            {"id": "col-progress", "title": "In Progress", "cardIds": []},
+            {"id": "col-review", "title": "Review", "cardIds": []},
+            {"id": "col-done", "title": "Done", "cardIds": []},
+        ],
+        "cards": {},
+    }
+)
 
 
 class BoardChangedError(RuntimeError):
@@ -33,7 +47,10 @@ def initialize_database(
     database_path: Path,
     seed_path: Path = DEFAULT_SEED_PATH,
     username: str = "user",
+    password: str = "password",
 ) -> None:
+    """Apply migrations and make sure the demo user exists. A newly created demo
+    user gets the example board; an existing user without a password gets one."""
     database_path.parent.mkdir(parents=True, exist_ok=True)
     seed_document = json.loads(seed_path.read_text(encoding="utf-8"))
     seed_json = seed_document["users"][0]["board"]
@@ -44,24 +61,21 @@ def initialize_database(
     with _connection(database_path) as connection:
         _apply_migrations(connection)
         connection.execute("BEGIN")
-        connection.execute(
-            "INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)",
-            (uuid4().hex, username),
-        )
         user = connection.execute(
-            "SELECT id FROM users WHERE username = ?", (username,)
+            "SELECT id, password_hash FROM users WHERE username = ?", (username,)
         ).fetchone()
-        board = connection.execute(
-            "SELECT id FROM boards WHERE user_id = ?", (user["id"],)
-        ).fetchone()
-
-        if board is None:
-            board_id = uuid4().hex
+        if user is None:
+            user_id = uuid4().hex
             connection.execute(
-                "INSERT INTO boards (id, user_id) VALUES (?, ?)",
-                (board_id, user["id"]),
+                "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+                (user_id, username, hash_password(password)),
             )
-            _insert_board(connection, board_id, seed_board)
+            _create_board(connection, user_id, "Project board", seed_board)
+        elif user["password_hash"] is None:
+            connection.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (hash_password(password), user["id"]),
+            )
         connection.commit()
 
 
@@ -72,6 +86,8 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
             f"Database schema version {version} is newer than supported version {SCHEMA_VERSION}"
         )
 
+    # Table rebuilds need foreign keys off; integrity is checked before each commit.
+    connection.execute("PRAGMA foreign_keys = OFF")
     migrations = sorted(MIGRATIONS_DIRECTORY.glob("*.sql"))
     for migration in migrations:
         migration_version = int(migration.name.split("_", 1)[0])
@@ -83,27 +99,115 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
         script = migration.read_text(encoding="utf-8")
         try:
             connection.executescript(
-                f"BEGIN IMMEDIATE;\n{script}\n"
-                f"PRAGMA user_version = {migration_version};\nCOMMIT;"
+                f"BEGIN IMMEDIATE;\n{script}\nPRAGMA user_version = {migration_version};"
             )
+            if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                raise RuntimeError(f"Migration {migration.name} broke foreign key integrity")
+            connection.commit()
         except Exception:
             if connection.in_transaction:
                 connection.rollback()
             raise
         version = migration_version
+    connection.execute("PRAGMA foreign_keys = ON")
 
     if version != SCHEMA_VERSION:
         raise RuntimeError(f"No migration found for schema version {SCHEMA_VERSION}")
 
 
-def _board_id(connection: sqlite3.Connection, username: str) -> str | None:
+def create_user(database_path: Path, username: str, password: str) -> bool:
+    """Create a user with one empty board. Returns False if the username is taken."""
+    user_id = uuid4().hex
+    with _connection(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            connection.execute(
+                "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+                (user_id, username, hash_password(password)),
+            )
+        except sqlite3.IntegrityError:
+            connection.rollback()
+            return False
+        _create_board(connection, user_id, NEW_USER_BOARD_NAME, EMPTY_BOARD)
+        connection.commit()
+        return True
+
+
+def verify_user(database_path: Path, username: str, password: str) -> bool:
+    with _connection(database_path) as connection:
+        user = connection.execute(
+            "SELECT password_hash FROM users WHERE username = ?", (username,)
+        ).fetchone()
+    return (
+        user is not None
+        and user["password_hash"] is not None
+        and verify_password(password, user["password_hash"])
+    )
+
+
+def _create_board(
+    connection: sqlite3.Connection, user_id: str, name: str, board_data: BoardData
+) -> dict[str, str]:
+    board_id = uuid4().hex
+    connection.execute(
+        "INSERT INTO boards (id, user_id, name) VALUES (?, ?, ?)",
+        (board_id, user_id, name),
+    )
+    _insert_board(connection, board_id, board_data)
+    return {"id": board_id, "name": name}
+
+
+def _board_id(connection: sqlite3.Connection, username: str, board_id: str) -> str | None:
     board = connection.execute(
         """SELECT boards.id FROM boards
            JOIN users ON users.id = boards.user_id
-           WHERE users.username = ?""",
-        (username,),
+           WHERE users.username = ? AND boards.id = ?""",
+        (username, board_id),
     ).fetchone()
     return None if board is None else board["id"]
+
+
+def list_boards(database_path: Path, username: str) -> list[dict[str, str]]:
+    with _connection(database_path) as connection:
+        rows = connection.execute(
+            """SELECT boards.id, boards.name FROM boards
+               JOIN users ON users.id = boards.user_id
+               WHERE users.username = ?
+               ORDER BY boards.rowid""",
+            (username,),
+        ).fetchall()
+    return [{"id": row["id"], "name": row["name"]} for row in rows]
+
+
+def create_board(database_path: Path, username: str, name: str) -> dict[str, str]:
+    with _connection(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        user = connection.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        board = _create_board(connection, user["id"], name, EMPTY_BOARD)
+        connection.commit()
+        return board
+
+
+def rename_board(
+    database_path: Path, username: str, board_id: str, name: str
+) -> dict[str, str] | None:
+    with _connection(database_path) as connection:
+        if _board_id(connection, username, board_id) is None:
+            return None
+        connection.execute("UPDATE boards SET name = ? WHERE id = ?", (name, board_id))
+        connection.commit()
+        return {"id": board_id, "name": name}
+
+
+def delete_board(database_path: Path, username: str, board_id: str) -> bool:
+    with _connection(database_path) as connection:
+        if _board_id(connection, username, board_id) is None:
+            return False
+        connection.execute("DELETE FROM boards WHERE id = ?", (board_id,))
+        connection.commit()
+        return True
 
 
 def _read_board(connection: sqlite3.Connection, board_id: str) -> dict[str, object]:
@@ -152,24 +256,26 @@ def _insert_board(
             )
 
 
-def load_board(database_path: Path, username: str) -> dict[str, object] | None:
+def load_board(
+    database_path: Path, username: str, board_id: str
+) -> dict[str, object] | None:
     with _connection(database_path) as connection:
-        board_id = _board_id(connection, username)
-        return None if board_id is None else _read_board(connection, board_id)
+        owned_board_id = _board_id(connection, username, board_id)
+        return None if owned_board_id is None else _read_board(connection, owned_board_id)
 
 
 def replace_board(
     database_path: Path,
     username: str,
+    board_id: str,
     board_data: BoardData,
     expected_board: dict[str, object] | None = None,
 ) -> bool:
-    """Replace the user's board. When expected_board is given, raise
+    """Replace one of the user's boards. When expected_board is given, raise
     BoardChangedError instead of saving if the stored board no longer matches it."""
     with _connection(database_path) as connection:
         connection.execute("BEGIN IMMEDIATE")
-        board_id = _board_id(connection, username)
-        if board_id is None:
+        if _board_id(connection, username, board_id) is None:
             connection.rollback()
             return False
         if expected_board is not None and _read_board(connection, board_id) != expected_board:

@@ -125,14 +125,14 @@ describe("KanbanBoard", () => {
       json: async () => JSON.parse(init.body as string),
     }));
     vi.stubGlobal("fetch", fetchMock);
-    render(<KanbanBoard initialBoard={initialData} authHeader="Basic token" />);
+    render(<KanbanBoard initialBoard={initialData} api={{ authHeader: "Basic token", boardId: "board-1" }} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Delete Align roadmap themes" }));
 
     expect(await screen.findByText("Changes saved")).toBeInTheDocument();
     expect(screen.queryByTestId("card-card-1")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/board",
+      "/api/boards/board-1",
       expect.objectContaining({ method: "PUT" })
     );
   });
@@ -146,7 +146,7 @@ describe("KanbanBoard", () => {
         json: async () => ({ detail: "Database unavailable" }),
       })
     );
-    render(<KanbanBoard initialBoard={initialData} authHeader="Basic token" />);
+    render(<KanbanBoard initialBoard={initialData} api={{ authHeader: "Basic token", boardId: "board-1" }} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Delete Align roadmap themes" }));
 
@@ -170,7 +170,7 @@ describe("KanbanBoard", () => {
         json: async () => ({ detail: "Database unavailable" }),
       })
     );
-    render(<KanbanBoard initialBoard={initialData} authHeader="Basic token" />);
+    render(<KanbanBoard initialBoard={initialData} api={{ authHeader: "Basic token", boardId: "board-1" }} />);
     const input = within(getFirstColumn()).getByLabelText("Column title");
     await userEvent.clear(input);
     await userEvent.type(input, "Rejected name");

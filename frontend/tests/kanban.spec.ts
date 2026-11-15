@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-const signIn = async (page: import("@playwright/test").Page) => {
+type Page = import("@playwright/test").Page;
+
+const signIn = async (page: Page, username = "user", password = "password") => {
   await page.goto("/");
-  await page.getByLabel("Username").fill("user");
-  await page.getByLabel("Password").fill("password");
+  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 };
@@ -224,3 +226,96 @@ test("lays columns out in one horizontal row that scrolls inside the board", asy
   expect(scrollWidth).toBeGreaterThan(clientWidth);
   expect(await page.locator("body").evaluate((body) => body.scrollWidth)).toBe(900);
 });
+
+const addCard = async (page: Page, title: string) => {
+  const firstColumn = page.getByTestId("column-col-backlog");
+  await firstColumn.getByRole("button", { name: /add a card/i }).click();
+  await firstColumn.getByPlaceholder("Card title").fill(title);
+  await firstColumn.getByRole("button", { name: /add card/i }).click();
+  await expect(page.getByText("Changes saved")).toBeVisible();
+};
+
+test("creates an account and signs back in with the new credentials", async ({ page }) => {
+  const username = `e2e-${Date.now()}`;
+  await page.goto("/");
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("e2e-secret");
+  await page.getByLabel("Confirm password").fill("e2e-secret");
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect(page.getByRole("heading", { name: "My first board" })).toBeVisible();
+  await expect(page.getByTestId(/^card-/)).toHaveCount(0);
+  await addCard(page, "New user card");
+  await page.getByRole("button", { name: "Sign out" }).click();
+
+  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Password").fill("wrong-secret");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByText("Incorrect username or password.")).toBeVisible();
+
+  await page.getByLabel("Password").fill("e2e-secret");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByText("New user card")).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "Project board" })).toBeVisible();
+  await expect(page.getByText("New user card")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "My first board" })).toHaveCount(0);
+});
+
+test("keeps cards and AI chat separate across multiple boards", async ({ page }) => {
+  await signIn(page, ...(await createAccount(page)));
+  const boards = page.getByRole("navigation", { name: "Boards" });
+
+  await page.getByRole("button", { name: "New board" }).click();
+  await page.getByLabel("Board name").fill("Second board");
+  await page.getByRole("button", { name: "Create board" }).click();
+  await expect(page.getByRole("heading", { name: "Second board", exact: true })).toBeVisible();
+  await addCard(page, "Second board card");
+
+  await page.getByRole("button", { name: "Open board chat" }).click();
+  await page.getByLabel("Message the AI assistant").fill("Create e2e card");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("AI-created card")).toBeVisible();
+  await page.getByRole("button", { name: "Close board chat" }).click();
+
+  await boards.getByRole("button", { name: "My first board" }).click();
+  await expect(page.getByRole("heading", { name: "My first board" })).toBeVisible();
+  await expect(page.getByText("Second board card")).toHaveCount(0);
+  await expect(page.getByText("AI-created card")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open board chat" }).click();
+  await expect(page.getByText("I created the card.")).toHaveCount(0);
+  await page.getByRole("button", { name: "Close board chat" }).click();
+
+  await boards.getByRole("button", { name: "Second board" }).click();
+  await expect(page.getByText("Second board card")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Second board", exact: true })).toBeVisible();
+  await expect(page.getByText("AI-created card")).toBeVisible();
+  await page.getByRole("button", { name: "Open board chat" }).click();
+  await expect(page.getByText("I created the card.")).toBeVisible();
+  await page.getByRole("button", { name: "Close board chat" }).click();
+
+  await page.getByRole("button", { name: "Rename board" }).click();
+  await page.getByLabel("Board name").fill("Renamed board");
+  await page.getByRole("button", { name: "Save name" }).click();
+  await expect(page.getByRole("heading", { name: "Renamed board" })).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete board" }).click();
+  await expect(boards.getByRole("button", { name: "Renamed board" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "My first board" })).toBeVisible();
+  await page.reload();
+  await expect(boards.getByRole("button")).toHaveText(["My first board", "New board"]);
+});
+
+const createAccount = async (page: Page): Promise<[string, string]> => {
+  const username = `boards-${Date.now()}`;
+  const response = await page.request.post("/api/users", {
+    data: { username, password: "boards-secret" },
+  });
+  expect(response.status()).toBe(201);
+  return [username, "boards-secret"];
+};

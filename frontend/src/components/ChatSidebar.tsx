@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  CHAT_HISTORY_STORAGE_KEY,
+  chatHistoryKey,
   isChatMessage,
   sendChatMessage,
   type ChatMessage,
@@ -12,11 +12,13 @@ import { ChatIcon, CloseIcon, SendIcon } from "@/components/icons";
 
 type ChatSidebarProps = {
   authHeader: string;
+  boardId: string;
   onBoardUpdated: () => Promise<BoardData>;
 };
 
 export const ChatSidebar = ({
   authHeader,
+  boardId,
   onBoardUpdated,
 }: ChatSidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,7 +43,7 @@ export const ChatSidebar = ({
   }, [isOpen]);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+    const stored = sessionStorage.getItem(chatHistoryKey(boardId));
     if (stored) {
       try {
         const parsed: unknown = JSON.parse(stored);
@@ -49,17 +51,17 @@ export const ChatSidebar = ({
           setMessages(parsed.filter(isChatMessage));
         }
       } catch {
-        sessionStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
+        sessionStorage.removeItem(chatHistoryKey(boardId));
       }
     }
     setHistoryLoaded(true);
-  }, []);
+  }, [boardId]);
 
   useEffect(() => {
     if (historyLoaded) {
-      sessionStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(messages));
+      sessionStorage.setItem(chatHistoryKey(boardId), JSON.stringify(messages));
     }
-  }, [historyLoaded, messages]);
+  }, [boardId, historyLoaded, messages]);
 
   useEffect(() => {
     const messageList = messageListRef.current;
@@ -84,6 +86,7 @@ export const ChatSidebar = ({
     try {
       const result = await sendChatMessage(
         authHeader,
+        boardId,
         text,
         previousMessages.slice(-40)
       );

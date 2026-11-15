@@ -13,10 +13,10 @@ describe("chat API client", () => {
     const history = [{ role: "user" as const, content: "Earlier question" }];
 
     await expect(
-      sendChatMessage("Basic token", "Move this card", history)
+      sendChatMessage("Basic token", "board-1", "Move this card", history)
     ).resolves.toEqual({ response: "Done.", board_updated: true });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/chat", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/boards/board-1/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -36,7 +36,7 @@ describe("chat API client", () => {
       })
     );
 
-    await expect(sendChatMessage("Basic token", "Help", [])).rejects.toMatchObject({
+    await expect(sendChatMessage("Basic token", "board-1", "Help", [])).rejects.toMatchObject({
       name: "ChatApiError",
       message: "AI provider request failed",
       status: 502,

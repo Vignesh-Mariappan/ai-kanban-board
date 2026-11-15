@@ -59,3 +59,27 @@ class BoardData(BaseModel):
         if any(card_id != card.id for card_id, card in self.cards.items()):
             raise ValueError("each card map key must match its card ID")
         return self
+
+class UserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(pattern=r"^[A-Za-z0-9_.-]{3,32}$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class BoardName(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("name must not be blank")
+        return value.strip()
+
+
+class BoardSummary(BaseModel):
+    id: str
+    name: str

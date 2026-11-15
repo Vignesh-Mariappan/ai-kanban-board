@@ -20,14 +20,16 @@ import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
 
 type KanbanBoardProps = {
   initialBoard?: BoardData;
-  authHeader?: string;
+  title?: string;
+  api?: { authHeader: string; boardId: string };
 };
 
 type BoardUpdate = (board: BoardData) => BoardData;
 
 export const KanbanBoard = ({
   initialBoard = initialData,
-  authHeader,
+  title = "Project board",
+  api,
 }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(() => initialBoard);
   const boardRef = useRef(board);
@@ -47,7 +49,7 @@ export const KanbanBoard = ({
   const cardsById = useMemo(() => board.cards, [board.cards]);
 
   const updateBoard = (update: BoardUpdate) => {
-    if (!authHeader) {
+    if (!api) {
       const nextBoard = update(boardRef.current);
       boardRef.current = nextBoard;
       setBoard(nextBoard);
@@ -59,7 +61,7 @@ export const KanbanBoard = ({
     writeQueue.current = writeQueue.current.then(async () => {
       const nextBoard = update(boardRef.current);
       try {
-        const savedBoard = await saveBoard(authHeader, nextBoard);
+        const savedBoard = await saveBoard(api.authHeader, api.boardId, nextBoard);
         boardRef.current = savedBoard;
         setBoard(savedBoard);
       } catch (error) {
@@ -152,13 +154,13 @@ export const KanbanBoard = ({
   };
 
   const refreshBoard = async () => {
-    if (!authHeader) {
+    if (!api) {
       return boardRef.current;
     }
 
     const refresh = writeQueue.current.then(async () => {
       try {
-        const latestBoard = await fetchBoard(authHeader);
+        const latestBoard = await fetchBoard(api.authHeader, api.boardId);
         boardRef.current = latestBoard;
         setBoard(latestBoard);
         saveErrorRef.current = "";
@@ -194,13 +196,13 @@ export const KanbanBoard = ({
         <header className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-2">
           <div>
             <h1 className="font-display text-2xl font-semibold text-[var(--text)]">
-              Project board
+              {title}
             </h1>
             <p className="mt-1 text-sm text-[var(--gray-text)]">
               {cardCount} cards across {board.columns.length} columns. Drag cards between stages.
             </p>
           </div>
-          {authHeader && (
+          {api && (
             <div className="min-h-6 text-sm" aria-live="polite">
               {saveStatus === "saving" && (
                 <p role="status" className="text-[var(--gray-text)]">
@@ -264,8 +266,12 @@ export const KanbanBoard = ({
           </DragOverlay>
         </DndContext>
       </main>
-      {authHeader && (
-        <ChatSidebar authHeader={authHeader} onBoardUpdated={refreshBoard} />
+      {api && (
+        <ChatSidebar
+          authHeader={api.authHeader}
+          boardId={api.boardId}
+          onBoardUpdated={refreshBoard}
+        />
       )}
     </div>
   );

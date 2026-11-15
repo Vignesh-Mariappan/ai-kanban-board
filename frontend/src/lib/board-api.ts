@@ -1,5 +1,12 @@
 import type { BoardData } from "@/lib/kanban";
 
+export const SELECTED_BOARD_STORAGE_KEY = "kanban-mvp-board";
+
+export type BoardSummary = {
+  id: string;
+  name: string;
+};
+
 export class BoardApiError extends Error {
   constructor(
     message: string,
@@ -15,23 +22,24 @@ export const createBasicAuthHeader = (username: string, password: string) => {
   return `Basic ${btoa(String.fromCharCode(...bytes))}`;
 };
 
-const requestBoard = async (
-  authorization: string,
-  init?: RequestInit
-): Promise<BoardData> => {
-  const response = await fetch("/api/board", {
-    ...init,
-    headers: {
-      ...init?.headers,
-      Authorization: authorization,
-    },
-  });
+export const usernameFromAuthHeader = (authorization: string) => {
+  const bytes = Uint8Array.from(atob(authorization.slice("Basic ".length)), (char) =>
+    char.charCodeAt(0)
+  );
+  return new TextDecoder().decode(bytes).split(":")[0];
+};
+
+const request = async <T>(
+  path: string,
+  init: RequestInit & { headers?: Record<string, string> } = {}
+): Promise<T> => {
+  const response = await fetch(path, init);
 
   if (!response.ok) {
-    let detail = `Board request failed (${response.status}).`;
+    let detail = `Request failed (${response.status}).`;
     try {
-      const body = (await response.json()) as { detail?: string };
-      if (body.detail) {
+      const body = (await response.json()) as { detail?: unknown };
+      if (typeof body.detail === "string") {
         detail = body.detail;
       }
     } catch {
@@ -40,15 +48,42 @@ const requestBoard = async (
     throw new BoardApiError(detail, response.status);
   }
 
-  return (await response.json()) as BoardData;
+  return (response.status === 204 ? undefined : await response.json()) as T;
 };
 
-export const fetchBoard = (authorization: string) =>
-  requestBoard(authorization);
+const jsonBody = (method: string, body: unknown, authorization?: string) => ({
+  method,
+  headers: {
+    "Content-Type": "application/json",
+    ...(authorization && { Authorization: authorization }),
+  },
+  body: JSON.stringify(body),
+});
 
-export const saveBoard = (authorization: string, board: BoardData) =>
-  requestBoard(authorization, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(board),
+const boardPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}`;
+
+export const registerUser = (username: string, password: string) =>
+  request<{ username: string }>("/api/users", jsonBody("POST", { username, password }));
+
+export const fetchBoards = (authorization: string) =>
+  request<BoardSummary[]>("/api/boards", { headers: { Authorization: authorization } });
+
+export const createBoard = (authorization: string, name: string) =>
+  request<BoardSummary>("/api/boards", jsonBody("POST", { name }, authorization));
+
+export const renameBoard = (authorization: string, boardId: string, name: string) =>
+  request<BoardSummary>(boardPath(boardId), jsonBody("PATCH", { name }, authorization));
+
+export const deleteBoard = (authorization: string, boardId: string) =>
+  request<void>(boardPath(boardId), {
+    method: "DELETE",
+    headers: { Authorization: authorization },
   });
+
+export const fetchBoard = (authorization: string, boardId: string) =>
+  request<BoardData>(boardPath(boardId), { headers: { Authorization: authorization } });
+
+export const saveBoard = (authorization: string, boardId: string, board: BoardData) =>
+  request<BoardData>(boardPath(boardId), jsonBody("PUT", board, authorization));
+
+export const chatPath = (boardId: string) => `${boardPath(boardId)}/chat`;
