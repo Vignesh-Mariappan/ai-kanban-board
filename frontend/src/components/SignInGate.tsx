@@ -10,6 +10,7 @@ import {
 import { BoardApiError, createBasicAuthHeader, fetchBoard } from "@/lib/board-api";
 import { CHAT_HISTORY_STORAGE_KEY } from "@/lib/chat-api";
 import type { BoardData } from "@/lib/kanban";
+import { SignOutIcon } from "@/components/icons";
 
 const sessionKey = "kanban-mvp-auth";
 const sessionChangeEvent = "kanban-session-change";
@@ -122,18 +123,18 @@ export const SignInGate = ({ children }: SignInGateProps) => {
   if (!authHeader) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6 py-12">
-        <section className="w-full max-w-md rounded-[28px] border border-[var(--stroke)] bg-white p-8 shadow-[var(--shadow)] sm:p-10">
+        <section className="w-full max-w-md rounded-[28px] border border-[var(--stroke)] bg-[var(--surface)] p-8 shadow-[var(--shadow)] sm:p-10">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--gray-text)]">
             Single Board Kanban
           </p>
-          <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
+          <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--text)]">
             Kanban Studio
           </h1>
-          <h2 className="mt-8 text-base font-semibold text-[var(--navy-dark)]">
+          <h2 className="mt-8 text-base font-semibold text-[var(--text)]">
             Sign in
           </h2>
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-            <label className="block space-y-2 text-sm font-medium text-[var(--navy-dark)]">
+            <label className="block space-y-2 text-sm font-medium text-[var(--text)]">
               Username
               <input
                 autoComplete="username"
@@ -142,11 +143,11 @@ export const SignInGate = ({ children }: SignInGateProps) => {
                   setUsername(event.target.value);
                   setError("");
                 }}
-                className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--primary-blue)]"
+                className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--primary-blue)]"
                 required
               />
             </label>
-            <label className="block space-y-2 text-sm font-medium text-[var(--navy-dark)]">
+            <label className="block space-y-2 text-sm font-medium text-[var(--text)]">
               Password
               <input
                 type="password"
@@ -156,19 +157,19 @@ export const SignInGate = ({ children }: SignInGateProps) => {
                   setPassword(event.target.value);
                   setError("");
                 }}
-                className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--primary-blue)]"
+                className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--primary-blue)]"
                 required
               />
             </label>
             {error && (
-              <p role="alert" className="text-sm font-medium text-red-700">
+              <p role="alert" className="text-sm font-medium text-red-400">
                 {error}
               </p>
             )}
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110"
+              className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
             >
               {isSubmitting ? "Signing in..." : "Sign in"}
             </button>
@@ -191,11 +192,11 @@ export const SignInGate = ({ children }: SignInGateProps) => {
   if (loadedSession.error || !loadedSession.board) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6 py-12">
-        <section className="w-full max-w-md rounded-[28px] border border-[var(--stroke)] bg-white p-8 shadow-[var(--shadow)]">
-          <h1 className="font-display text-2xl font-semibold text-[var(--navy-dark)]">
+        <section className="w-full max-w-md rounded-[28px] border border-[var(--stroke)] bg-[var(--surface)] p-8 shadow-[var(--shadow)]">
+          <h1 className="font-display text-2xl font-semibold text-[var(--text)]">
             Unable to load your board
           </h1>
-          <p role="alert" className="mt-4 text-sm text-red-700">
+          <p role="alert" className="mt-4 text-sm text-red-400">
             {loadedSession.error ?? "The board response was empty."}
           </p>
           <div className="mt-6 flex gap-3">
@@ -212,7 +213,7 @@ export const SignInGate = ({ children }: SignInGateProps) => {
             <button
               type="button"
               onClick={handleSignOut}
-              className="rounded-full border border-[var(--stroke)] px-4 py-2 text-sm font-semibold text-[var(--navy-dark)]"
+              className="rounded-full border border-[var(--stroke-strong)] px-4 py-2 text-sm font-semibold text-[var(--text)]"
             >
               Sign out
             </button>
@@ -223,16 +224,27 @@ export const SignInGate = ({ children }: SignInGateProps) => {
   }
 
   return (
-    <div>
-      <div className="mx-auto flex max-w-[1500px] justify-end px-6 pt-5">
+    <div className="flex h-dvh flex-col">
+      <nav className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          <span className="grid h-8 w-8 grid-cols-3 gap-0.5 rounded-lg bg-[var(--surface-raised)] p-1.5" aria-hidden="true">
+            <span className="rounded-sm bg-[var(--primary-blue)]" />
+            <span className="rounded-sm bg-[var(--accent-yellow)]" />
+            <span className="rounded-sm bg-[var(--secondary-purple)]" />
+          </span>
+          <span className="font-display text-lg font-semibold text-[var(--text)]">
+            Kanban Studio
+          </span>
+        </div>
         <button
           type="button"
           onClick={handleSignOut}
-          className="rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-sm font-semibold text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)]"
+          className="flex items-center gap-2 rounded-full border border-[var(--stroke-strong)] px-4 py-1.5 text-sm font-semibold text-[var(--text)] transition hover:border-[var(--primary-blue)]"
         >
+          <SignOutIcon />
           Sign out
         </button>
-      </div>
+      </nav>
       {children(loadedSession.board, authHeader)}
     </div>
   );

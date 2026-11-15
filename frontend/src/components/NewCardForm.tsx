@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { CheckIcon, CloseIcon, PlusIcon } from "@/components/icons";
 
 const initialFormState = { title: "", details: "" };
 
@@ -21,7 +22,7 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
   };
 
   return (
-    <div className="mt-4">
+    <div>
       {isOpen ? (
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
@@ -30,7 +31,7 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
               setFormState((prev) => ({ ...prev, title: event.target.value }))
             }
             placeholder="Card title"
-            className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+            className="w-full rounded-xl border border-[var(--stroke-strong)] bg-[var(--surface-raised)] px-3 py-2 text-sm font-medium text-[var(--text)] placeholder:text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
             required
           />
           <textarea
@@ -40,24 +41,26 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             }
             placeholder="Details"
             rows={3}
-            className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+            className="w-full resize-none rounded-xl border border-[var(--stroke-strong)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
           />
-          <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              className="rounded-full bg-[var(--secondary-purple)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110"
-            >
-              Add card
-            </button>
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => {
                 setIsOpen(false);
                 setFormState(initialFormState);
               }}
-              className="rounded-full border border-[var(--stroke)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+              className="flex items-center gap-1.5 rounded-full border border-[var(--stroke-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--gray-text)] transition hover:text-[var(--text)]"
             >
+              <CloseIcon className="h-3.5 w-3.5" />
               Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-full bg-[var(--secondary-purple)] px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110"
+            >
+              <CheckIcon className="h-3.5 w-3.5" />
+              Add card
             </button>
           </div>
         </form>
@@ -65,8 +68,9 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="w-full rounded-full border border-dashed border-[var(--stroke)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--primary-blue)] transition hover:border-[var(--primary-blue)]"
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--stroke-strong)] px-3 py-2 text-xs font-semibold text-[var(--primary-blue)] transition hover:border-[var(--primary-blue)] hover:bg-[var(--surface-strong)]"
         >
+          <PlusIcon className="h-3.5 w-3.5" />
           Add a card
         </button>
       )}

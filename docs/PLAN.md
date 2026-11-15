@@ -173,6 +173,7 @@ Success criteria:
 ## Part 10: AI chat sidebar and full application integration
 
 Approved UI follow-up: replace the sidebar with a bottom-right chat launcher and closable overlay, keep the board full-width, and place card actions below the title and description.
+Approved UI follow-up: dark theme, compact app bar, columns in one horizontal row that scrolls inside the board (cards scroll within each column), and icon buttons for card edit/delete.
 Verified with 23 frontend unit tests, 10 browser tests using installed Chrome (including 390-2100px layout checks), lint, TypeScript, and a production Docker build/restart.
 
 - [x] Add an AI chat sidebar consistent with the existing frontend and usable alongside the board.

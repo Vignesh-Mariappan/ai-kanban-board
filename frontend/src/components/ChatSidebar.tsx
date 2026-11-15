@@ -8,6 +8,7 @@ import {
   type ChatMessage,
 } from "@/lib/chat-api";
 import type { BoardData } from "@/lib/kanban";
+import { ChatIcon, CloseIcon, SendIcon } from "@/components/icons";
 
 type ChatSidebarProps = {
   authHeader: string;
@@ -115,10 +116,7 @@ export const ChatSidebar = ({
         onClick={() => setIsOpen(true)}
         className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--secondary-purple)] text-white shadow-[var(--shadow)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--secondary-purple)]"
       >
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-7 w-7">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 11a8 8 0 0 1-8 8H5l-3 3V11a8 8 0 0 1 8-8h3a8 8 0 0 1 8 8Z" />
-          <path strokeLinecap="round" d="M7 10h10M7 14h6" />
-        </svg>
+        <ChatIcon className="h-7 w-7" />
       </button>
       <section
         id="board-chat"
@@ -131,14 +129,14 @@ export const ChatSidebar = ({
             closeChat();
           }
         }}
-        className={`${isOpen ? "flex" : "hidden"} fixed bottom-6 right-6 z-50 h-[min(640px,calc(100dvh-3rem))] w-[calc(100%-3rem)] max-w-[400px] flex-col overflow-hidden rounded-[28px] border border-[var(--stroke)] bg-white shadow-[var(--shadow)]`}
+        className={`${isOpen ? "flex" : "hidden"} fixed bottom-6 right-6 z-50 h-[min(640px,calc(100dvh-3rem))] w-[calc(100%-3rem)] max-w-[400px] flex-col overflow-hidden rounded-[28px] border border-[var(--stroke-strong)] bg-[var(--surface)] shadow-[var(--shadow)]`}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--stroke)] px-5 py-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
               AI assistant
             </p>
-            <h2 id="board-chat-title" className="mt-2 text-lg font-semibold text-[var(--navy-dark)]">
+            <h2 id="board-chat-title" className="mt-2 text-lg font-semibold text-[var(--text)]">
               Board chat
             </h2>
             <p className="mt-1 text-sm text-[var(--gray-text)]">
@@ -149,22 +147,20 @@ export const ChatSidebar = ({
             type="button"
             aria-label="Close board chat"
             onClick={closeChat}
-            className="shrink-0 rounded-full p-2 text-[var(--navy-dark)] transition hover:bg-[var(--surface)] focus-visible:outline-2 focus-visible:outline-[var(--primary-blue)]"
+            className="shrink-0 rounded-full p-2 text-[var(--text)] transition hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-[var(--primary-blue)]"
           >
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
-              <path strokeLinecap="round" d="m6 6 12 12M18 6 6 18" />
-            </svg>
+            <CloseIcon className="h-5 w-5" />
           </button>
         </header>
 
         <div
           ref={messageListRef}
-          className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 [overflow-wrap:anywhere]"
+          className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-4 [overflow-wrap:anywhere]"
           aria-live="polite"
           aria-label="Conversation"
         >
           {messages.length === 0 && (
-            <p className="rounded-2xl bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--gray-text)]">
+            <p className="rounded-2xl bg-[var(--surface-strong)] p-4 text-sm leading-6 text-[var(--gray-text)]">
               Ask about your board or request a card update.
             </p>
           )}
@@ -174,7 +170,7 @@ export const ChatSidebar = ({
               className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${
                 message.role === "user"
                   ? "ml-auto bg-[var(--primary-blue)] text-white"
-                  : "bg-[var(--surface)] text-[var(--navy-dark)]"
+                  : "bg-[var(--surface-raised)] text-[var(--text)]"
               }`}
             >
               <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-70">
@@ -192,7 +188,7 @@ export const ChatSidebar = ({
 
         <form onSubmit={handleSubmit} className="shrink-0 border-t border-[var(--stroke)] p-4">
           {error && (
-            <p role="alert" className="mb-3 text-sm text-red-700">
+            <p role="alert" className="mb-3 text-sm text-red-400">
               {error}
             </p>
           )}
@@ -208,13 +204,14 @@ export const ChatSidebar = ({
             rows={3}
             maxLength={2000}
             disabled={!historyLoaded || isSending}
-            className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--primary-blue)] disabled:opacity-60"
+            className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none placeholder:text-[var(--gray-text)] focus:border-[var(--primary-blue)] disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={!historyLoaded || isSending || !question.trim()}
-            className="mt-3 w-full rounded-full bg-[var(--secondary-purple)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[var(--secondary-purple)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            <SendIcon />
             {isSending ? "Sending..." : "Send message"}
           </button>
         </form>

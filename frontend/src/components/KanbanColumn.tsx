@@ -4,6 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import type { Card, Column } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
+import { PencilIcon } from "@/components/icons";
 
 type KanbanColumnProps = {
   column: Column;
@@ -28,19 +29,14 @@ export const KanbanColumn = ({
     <section
       ref={setNodeRef}
       className={clsx(
-        "flex min-h-[520px] flex-col rounded-3xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow)] transition",
-        isOver && "ring-2 ring-[var(--accent-yellow)]"
+        "flex h-full min-w-[260px] flex-1 flex-col rounded-3xl border border-[var(--stroke)] bg-[var(--surface)] transition",
+        isOver && "border-[var(--accent-yellow)] bg-[var(--surface-strong)]"
       )}
       data-testid={`column-${column.id}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="w-full">
-          <div className="flex items-center gap-3">
-            <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-              {cards.length} cards
-            </span>
-          </div>
+      <div className="shrink-0 border-b border-[var(--stroke)] px-4 pb-3 pt-4">
+        <div className="h-1 w-10 rounded-full bg-[var(--accent-yellow)]" />
+        <div className="group mt-3 flex items-center gap-2">
           <input
             key={column.title}
             defaultValue={column.title}
@@ -57,12 +53,16 @@ export const KanbanColumn = ({
                 event.currentTarget.blur();
               }
             }}
-            className="mt-3 w-full bg-transparent font-display text-lg font-semibold text-[var(--navy-dark)] outline-none"
+            className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1.5 py-0.5 -ml-1.5 font-display text-base font-semibold text-[var(--text)] outline-none transition hover:border-[var(--stroke-strong)] focus:border-[var(--primary-blue)]"
             aria-label="Column title"
           />
+          <PencilIcon className="h-3.5 w-3.5 shrink-0 text-[var(--gray-text)] opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100" />
+          <span className="shrink-0 rounded-full bg-[var(--surface-raised)] px-2.5 py-0.5 text-xs font-semibold text-[var(--gray-text)]">
+            {cards.length}
+          </span>
         </div>
       </div>
-      <div className="mt-4 flex flex-1 flex-col gap-3">
+      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         <SortableContext items={column.cardIds} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
             <KanbanCard
@@ -74,14 +74,16 @@ export const KanbanColumn = ({
           ))}
         </SortableContext>
         {cards.length === 0 && (
-          <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-[var(--stroke)] px-3 py-6 text-center text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+          <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-[var(--stroke-strong)] px-3 py-6 text-center text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
             Drop a card here
           </div>
         )}
       </div>
-      <NewCardForm
-        onAdd={(title, details) => onAddCard(column.id, title, details)}
-      />
+      <div className="shrink-0 px-3 pb-3">
+        <NewCardForm
+          onAdd={(title, details) => onAddCard(column.id, title, details)}
+        />
+      </div>
     </section>
   );
 };

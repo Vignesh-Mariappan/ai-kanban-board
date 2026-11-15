@@ -208,3 +208,19 @@ test("keeps card actions below text and chat floating without resizing the board
     await expect(launcher).toBeFocused();
   }
 });
+
+test("lays columns out in one horizontal row that scrolls inside the board", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await signIn(page);
+  const columns = await page.locator('[data-testid^="column-"]').all();
+  const tops = await Promise.all(columns.map(async (column) => (await column.boundingBox())!.y));
+  expect(new Set(tops).size).toBe(1);
+
+  const row = page.getByRole("region", { name: "Board columns" });
+  const { scrollWidth, clientWidth } = await row.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }));
+  expect(scrollWidth).toBeGreaterThan(clientWidth);
+  expect(await page.locator("body").evaluate((body) => body.scrollWidth)).toBe(900);
+});

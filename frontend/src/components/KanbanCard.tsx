@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import type { Card } from "@/lib/kanban";
+import { CheckIcon, CloseIcon, PencilIcon, TrashIcon } from "@/components/icons";
 
 type KanbanCardProps = {
   card: Card;
@@ -37,9 +38,10 @@ export const KanbanCard = ({ card, onEdit, onDelete }: KanbanCardProps) => {
       ref={setNodeRef}
       style={style}
       className={clsx(
-        "rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
-        "transition-all duration-150",
-        isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
+        "group rounded-2xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-4 py-3.5 shadow-[0_8px_20px_rgba(0,0,0,0.25)]",
+        "transition-all duration-150 hover:border-[var(--stroke-strong)]",
+        !isEditing && "cursor-grab active:cursor-grabbing",
+        isDragging && "opacity-50"
       )}
       {...(isEditing ? {} : { ...attributes, ...listeners })}
       data-testid={`card-${card.id}`}
@@ -50,7 +52,7 @@ export const KanbanCard = ({ card, onEdit, onDelete }: KanbanCardProps) => {
             aria-label="Edit card title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            className="w-full rounded-xl border border-[var(--stroke)] px-3 py-2 text-sm font-semibold text-[var(--navy-dark)]"
+            className="w-full rounded-xl border border-[var(--stroke-strong)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold text-[var(--text)] outline-none focus:border-[var(--primary-blue)]"
             required
           />
           <textarea
@@ -58,35 +60,39 @@ export const KanbanCard = ({ card, onEdit, onDelete }: KanbanCardProps) => {
             value={details}
             onChange={(event) => setDetails(event.target.value)}
             rows={3}
-            className="w-full resize-none rounded-xl border border-[var(--stroke)] px-3 py-2 text-sm text-[var(--gray-text)]"
+            className="w-full resize-none rounded-xl border border-[var(--stroke-strong)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--gray-text)] outline-none focus:border-[var(--primary-blue)]"
           />
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
-              className="rounded-full bg-[var(--secondary-purple)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white"
-            >
-              Save changes
-            </button>
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => setIsEditing(false)}
-              className="rounded-full border border-[var(--stroke)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)]"
+              className="flex items-center gap-1.5 rounded-full border border-[var(--stroke-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--gray-text)] transition hover:text-[var(--text)]"
+              aria-label="Cancel editing"
             >
-              Cancel editing
+              <CloseIcon className="h-3.5 w-3.5" />
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-full bg-[var(--secondary-purple)] px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110"
+              aria-label="Save changes"
+            >
+              <CheckIcon className="h-3.5 w-3.5" />
+              Save
             </button>
           </div>
         </form>
       ) : (
-        <div className="space-y-3 [overflow-wrap:anywhere]">
+        <div className="space-y-2 [overflow-wrap:anywhere]">
           <div>
-            <h4 className="font-display text-base font-semibold text-[var(--navy-dark)]">
+            <h4 className="font-display text-[15px] font-semibold leading-snug text-[var(--text)]">
               {card.title}
             </h4>
-            <p className="mt-2 text-sm leading-6 text-[var(--gray-text)]">
+            <p className="mt-1.5 text-sm leading-6 text-[var(--gray-text)]">
               {card.details}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex items-center justify-end gap-1 opacity-70 transition group-hover:opacity-100 group-focus-within:opacity-100">
             <button
               type="button"
               onClick={() => {
@@ -94,18 +100,20 @@ export const KanbanCard = ({ card, onEdit, onDelete }: KanbanCardProps) => {
                 setDetails(card.details);
                 setIsEditing(true);
               }}
-              className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--primary-blue)] transition hover:border-[var(--stroke)]"
+              className="rounded-lg p-1.5 text-[var(--gray-text)] transition hover:bg-[var(--surface)] hover:text-[var(--primary-blue)] focus-visible:outline-2 focus-visible:outline-[var(--primary-blue)]"
               aria-label={`Edit ${card.title}`}
+              title="Edit card"
             >
-              Edit
+              <PencilIcon />
             </button>
             <button
               type="button"
               onClick={() => onDelete(card.id)}
-              className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--navy-dark)]"
+              className="rounded-lg p-1.5 text-[var(--gray-text)] transition hover:bg-[var(--surface)] hover:text-red-400 focus-visible:outline-2 focus-visible:outline-red-400"
               aria-label={`Delete ${card.title}`}
+              title="Delete card"
             >
-              Remove
+              <TrashIcon />
             </button>
           </div>
         </div>
