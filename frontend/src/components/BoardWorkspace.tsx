@@ -22,6 +22,8 @@ type BoardWorkspaceProps = {
 
 type BoardForm = { mode: "create" | "rename"; name: string };
 
+type LoadedBoard = { boardId: string; board: BoardData } | { boardId: string; error: string };
+
 const pickBoardId = (boards: BoardSummary[], preferredId: string | null) =>
   boards.find((board) => board.id === preferredId)?.id ?? boards[0]?.id ?? null;
 
@@ -30,11 +32,7 @@ export const BoardWorkspace = ({ authHeader, initialBoards }: BoardWorkspaceProp
   const [selectedId, setSelectedId] = useState(() =>
     pickBoardId(initialBoards, sessionStorage.getItem(SELECTED_BOARD_STORAGE_KEY))
   );
-  const [loaded, setLoaded] = useState<{
-    boardId: string;
-    board?: BoardData;
-    error?: string;
-  } | null>(null);
+  const [loaded, setLoaded] = useState<LoadedBoard | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [form, setForm] = useState<BoardForm | null>(null);
   const [actionError, setActionError] = useState("");
@@ -119,7 +117,53 @@ export const BoardWorkspace = ({ authHeader, initialBoards }: BoardWorkspaceProp
     });
   };
 
-  const isLoaded = loaded?.boardId === selectedId;
+  const renderBoard = () => {
+    if (!selectedBoard) {
+      return (
+        <div className="flex flex-1 items-center justify-center px-6 text-center">
+          <p className="text-sm text-[var(--gray-text)]">
+            You have no boards yet. Use New board to create one.
+          </p>
+        </div>
+      );
+    }
+    if (loaded?.boardId !== selectedId) {
+      return (
+        <div className="flex flex-1 items-center justify-center">
+          <p role="status" className="text-sm text-[var(--gray-text)]">
+            Loading board...
+          </p>
+        </div>
+      );
+    }
+    if ("error" in loaded) {
+      return (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <p role="alert" className="text-sm text-red-400">
+            Unable to load this board: {loaded.error}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoaded(null);
+              setRetryCount((count) => count + 1);
+            }}
+            className="rounded-full bg-[var(--secondary-purple)] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return (
+      <KanbanBoard
+        key={selectedBoard.id}
+        initialBoard={loaded.board}
+        title={selectedBoard.name}
+        api={{ authHeader, boardId: selectedBoard.id }}
+      />
+    );
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -217,42 +261,7 @@ export const BoardWorkspace = ({ authHeader, initialBoards }: BoardWorkspaceProp
         )}
       </div>
 
-      {!selectedBoard ? (
-        <div className="flex flex-1 items-center justify-center px-6 text-center">
-          <p className="text-sm text-[var(--gray-text)]">
-            You have no boards yet. Use New board to create one.
-          </p>
-        </div>
-      ) : !isLoaded ? (
-        <div className="flex flex-1 items-center justify-center">
-          <p role="status" className="text-sm text-[var(--gray-text)]">
-            Loading board...
-          </p>
-        </div>
-      ) : loaded.error || !loaded.board ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-          <p role="alert" className="text-sm text-red-400">
-            Unable to load this board: {loaded.error}
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setLoaded(null);
-              setRetryCount((count) => count + 1);
-            }}
-            className="rounded-full bg-[var(--secondary-purple)] px-4 py-2 text-sm font-semibold text-white"
-          >
-            Retry
-          </button>
-        </div>
-      ) : (
-        <KanbanBoard
-          key={selectedBoard.id}
-          initialBoard={loaded.board}
-          title={selectedBoard.name}
-          api={{ authHeader, boardId: selectedBoard.id }}
-        />
-      )}
+      {renderBoard()}
     </div>
   );
 };

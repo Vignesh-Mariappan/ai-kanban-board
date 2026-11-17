@@ -1,7 +1,6 @@
 import os
 import ssl
 from pathlib import Path
-from typing import Any
 
 import httpx2 as httpx
 
@@ -35,13 +34,12 @@ class OpenRouterClient:
         self._api_key = api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY")
         self._http_client = http_client
         configured_ca_bundle = os.getenv("OPENROUTER_CA_BUNDLE")
-        self._ca_bundle = (
-            Path(configured_ca_bundle)
-            if configured_ca_bundle
-            else DEFAULT_CA_BUNDLE_PATH
-            if DEFAULT_CA_BUNDLE_PATH.is_file()
-            else None
-        )
+        if configured_ca_bundle:
+            self._ca_bundle: Path | None = Path(configured_ca_bundle)
+        elif DEFAULT_CA_BUNDLE_PATH.is_file():
+            self._ca_bundle = DEFAULT_CA_BUNDLE_PATH
+        else:
+            self._ca_bundle = None
 
     def _ssl_context(self) -> ssl.SSLContext | bool:
         if self._ca_bundle is None:
@@ -66,21 +64,15 @@ class OpenRouterClient:
         }
         if json_mode:
             request["response_format"] = {"type": "json_object"}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
         try:
             if self._http_client is not None:
                 response = self._http_client.post(
-                    OPENROUTER_URL,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json=request,
-                    timeout=30,
+                    OPENROUTER_URL, headers=headers, json=request, timeout=30
                 )
             else:
                 with httpx.Client(timeout=30, verify=self._ssl_context()) as client:
-                    response = client.post(
-                        OPENROUTER_URL,
-                        headers={"Authorization": f"Bearer {self._api_key}"},
-                        json=request,
-                    )
+                    response = client.post(OPENROUTER_URL, headers=headers, json=request)
         except httpx.HTTPError as error:
             if "certificate_verify_failed" in str(error).lower():
                 raise OpenRouterError(
@@ -102,7 +94,7 @@ class OpenRouterClient:
             )
 
         try:
-            result: Any = response.json()
+            result = response.json()
         except ValueError:
             raise OpenRouterError("OpenRouter returned invalid JSON") from None
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -31,7 +31,7 @@ export const KanbanBoard = ({
   title = "Project board",
   api,
 }: KanbanBoardProps) => {
-  const [board, setBoard] = useState<BoardData>(() => initialBoard);
+  const [board, setBoard] = useState(initialBoard);
   const boardRef = useRef(board);
   const writeQueue = useRef(Promise.resolve());
   const pendingWrites = useRef(0);
@@ -46,13 +46,19 @@ export const KanbanBoard = ({
     })
   );
 
-  const cardsById = useMemo(() => board.cards, [board.cards]);
+  const showBoard = (nextBoard: BoardData) => {
+    boardRef.current = nextBoard;
+    setBoard(nextBoard);
+  };
+
+  const showSaveError = (message: string) => {
+    saveErrorRef.current = message;
+    setSaveError(message);
+  };
 
   const updateBoard = (update: BoardUpdate) => {
     if (!api) {
-      const nextBoard = update(boardRef.current);
-      boardRef.current = nextBoard;
-      setBoard(nextBoard);
+      showBoard(update(boardRef.current));
       return;
     }
 
@@ -61,13 +67,9 @@ export const KanbanBoard = ({
     writeQueue.current = writeQueue.current.then(async () => {
       const nextBoard = update(boardRef.current);
       try {
-        const savedBoard = await saveBoard(api.authHeader, api.boardId, nextBoard);
-        boardRef.current = savedBoard;
-        setBoard(savedBoard);
+        showBoard(await saveBoard(api.authHeader, api.boardId, nextBoard));
       } catch (error) {
-        saveErrorRef.current =
-          error instanceof Error ? error.message : "Unable to save board changes.";
-        setSaveError(saveErrorRef.current);
+        showSaveError(error instanceof Error ? error.message : "Unable to save board changes.");
       } finally {
         pendingWrites.current -= 1;
         setSaveStatus(
@@ -125,22 +127,17 @@ export const KanbanBoard = ({
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
-    updateBoard((prev) => {
-      return {
-        ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
-      };
-    });
+    updateBoard((prev) => ({
+      ...prev,
+      cards: Object.fromEntries(
+        Object.entries(prev.cards).filter(([id]) => id !== cardId)
+      ),
+      columns: prev.columns.map((column) =>
+        column.id === columnId
+          ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
+          : column
+      ),
+    }));
   };
 
   const handleEditCard = (cardId: string, title: string, details: string) => {
@@ -161,17 +158,12 @@ export const KanbanBoard = ({
     const refresh = writeQueue.current.then(async () => {
       try {
         const latestBoard = await fetchBoard(api.authHeader, api.boardId);
-        boardRef.current = latestBoard;
-        setBoard(latestBoard);
-        saveErrorRef.current = "";
-        setSaveError("");
+        showBoard(latestBoard);
+        showSaveError("");
         setSaveStatus("saved");
         return latestBoard;
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unable to refresh the board.";
-        saveErrorRef.current = message;
-        setSaveError(message);
+        showSaveError(error instanceof Error ? error.message : "Unable to refresh the board.");
         setSaveStatus("error");
         throw error;
       }
@@ -183,8 +175,7 @@ export const KanbanBoard = ({
     return refresh;
   };
 
-  const activeCard = activeCardId ? cardsById[activeCardId] : null;
-
+  const activeCard = activeCardId ? board.cards[activeCardId] : null;
   const cardCount = Object.keys(board.cards).length;
 
   return (
@@ -209,7 +200,7 @@ export const KanbanBoard = ({
                   Saving changes...
                 </p>
               )}
-              {saveStatus === "saved" && !saveError && (
+              {saveStatus === "saved" && (
                 <p role="status" className="flex items-center gap-1.5 text-emerald-400">
                   <CheckIcon />
                   Changes saved
@@ -221,8 +212,7 @@ export const KanbanBoard = ({
                   <button
                     type="button"
                     onClick={() => {
-                      saveErrorRef.current = "";
-                      setSaveError("");
+                      showSaveError("");
                       setSaveStatus("idle");
                     }}
                     className="font-semibold underline"
@@ -258,11 +248,11 @@ export const KanbanBoard = ({
             ))}
           </section>
           <DragOverlay>
-            {activeCard ? (
+            {activeCard && (
               <div className="w-[260px]">
                 <KanbanCardPreview card={activeCard} />
               </div>
-            ) : null}
+            )}
           </DragOverlay>
         </DndContext>
       </main>

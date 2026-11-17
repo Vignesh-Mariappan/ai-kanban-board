@@ -10,6 +10,20 @@ import {
 import type { BoardData } from "@/lib/kanban";
 import { ChatIcon, CloseIcon, SendIcon } from "@/components/icons";
 
+const loadHistory = (boardId: string): ChatMessage[] => {
+  const stored = sessionStorage.getItem(chatHistoryKey(boardId));
+  if (!stored) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter(isChatMessage) : [];
+  } catch {
+    sessionStorage.removeItem(chatHistoryKey(boardId));
+    return [];
+  }
+};
+
 type ChatSidebarProps = {
   authHeader: string;
   boardId: string;
@@ -22,8 +36,7 @@ export const ChatSidebar = ({
   onBoardUpdated,
 }: ChatSidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [messages, setMessages] = useState(() => loadHistory(boardId));
   const [question, setQuestion] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
@@ -43,25 +56,8 @@ export const ChatSidebar = ({
   }, [isOpen]);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem(chatHistoryKey(boardId));
-    if (stored) {
-      try {
-        const parsed: unknown = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setMessages(parsed.filter(isChatMessage));
-        }
-      } catch {
-        sessionStorage.removeItem(chatHistoryKey(boardId));
-      }
-    }
-    setHistoryLoaded(true);
-  }, [boardId]);
-
-  useEffect(() => {
-    if (historyLoaded) {
-      sessionStorage.setItem(chatHistoryKey(boardId), JSON.stringify(messages));
-    }
-  }, [boardId, historyLoaded, messages]);
+    sessionStorage.setItem(chatHistoryKey(boardId), JSON.stringify(messages));
+  }, [boardId, messages]);
 
   useEffect(() => {
     const messageList = messageListRef.current;
@@ -73,7 +69,7 @@ export const ChatSidebar = ({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = question.trim();
-    if (!text || isSending || !historyLoaded) {
+    if (!text || isSending) {
       return;
     }
 
@@ -206,12 +202,12 @@ export const ChatSidebar = ({
             placeholder="Ask about your board..."
             rows={3}
             maxLength={2000}
-            disabled={!historyLoaded || isSending}
+            disabled={isSending}
             className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none placeholder:text-[var(--gray-text)] focus:border-[var(--primary-blue)] disabled:opacity-60"
           />
           <button
             type="submit"
-            disabled={!historyLoaded || isSending || !question.trim()}
+            disabled={isSending || !question.trim()}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[var(--secondary-purple)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <SendIcon />

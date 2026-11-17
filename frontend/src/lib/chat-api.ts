@@ -1,7 +1,6 @@
-import { chatPath } from "@/lib/board-api";
-import type { BoardData } from "@/lib/kanban";
+import { chatPath, errorDetail, jsonBody } from "@/lib/board-api";
 
-export const CHAT_HISTORY_STORAGE_KEY = "kanban-mvp-chat-history";
+const CHAT_HISTORY_STORAGE_KEY = "kanban-mvp-chat-history";
 
 export const chatHistoryKey = (boardId: string) =>
   `${CHAT_HISTORY_STORAGE_KEY}:${boardId}`;
@@ -38,25 +37,13 @@ export const sendChatMessage = async (
   question: string,
   history: ChatMessage[]
 ): Promise<ChatResult> => {
-  const response = await fetch(chatPath(boardId), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: authorization,
-    },
-    body: JSON.stringify({ question, history }),
-  });
+  const response = await fetch(
+    chatPath(boardId),
+    jsonBody("POST", { question, history }, authorization)
+  );
 
   if (!response.ok) {
-    let detail = `Chat request failed (${response.status}).`;
-    try {
-      const body = (await response.json()) as { detail?: string };
-      if (body.detail) {
-        detail = body.detail;
-      }
-    } catch {
-      // Keep the status-based message for non-JSON responses.
-    }
+    const detail = await errorDetail(response, `Chat request failed (${response.status}).`);
     throw new ChatApiError(detail, response.status);
   }
 
@@ -73,5 +60,3 @@ export const isChatMessage = (value: unknown): value is ChatMessage => {
     typeof message.content === "string"
   );
 };
-
-export type BoardRefreshHandler = () => Promise<BoardData>;

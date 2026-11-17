@@ -1,4 +1,14 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import Annotated
+
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 FIXED_COLUMN_IDS = {
     "col-backlog",
@@ -7,36 +17,32 @@ FIXED_COLUMN_IDS = {
     "col-review",
     "col-done",
 }
+ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
+
+
+def _not_blank(value: str, info: ValidationInfo) -> str:
+    if not value.strip():
+        raise ValueError(f"{info.field_name} must not be blank")
+    return value
+
+
+NonBlankStr = Annotated[str, AfterValidator(_not_blank)]
 
 
 class CardData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
-    title: str = Field(min_length=1)
+    id: str = Field(pattern=ID_PATTERN)
+    title: NonBlankStr = Field(min_length=1)
     details: str = ""
-
-    @field_validator("title")
-    @classmethod
-    def title_must_not_be_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("title must not be blank")
-        return value
 
 
 class ColumnData(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
-    title: str = Field(min_length=1)
+    id: str = Field(pattern=ID_PATTERN)
+    title: NonBlankStr = Field(min_length=1)
     card_ids: list[str] = Field(alias="cardIds")
-
-    @field_validator("title")
-    @classmethod
-    def title_must_not_be_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("title must not be blank")
-        return value
 
 
 class BoardData(BaseModel):
@@ -47,8 +53,7 @@ class BoardData(BaseModel):
 
     @model_validator(mode="after")
     def validate_board_relationships(self) -> "BoardData":
-        column_ids = [column.id for column in self.columns]
-        if set(column_ids) != FIXED_COLUMN_IDS or len(column_ids) != len(set(column_ids)):
+        if {column.id for column in self.columns} != FIXED_COLUMN_IDS:
             raise ValueError("board must contain each of the five fixed column IDs exactly once")
 
         card_ids = [card_id for column in self.columns for card_id in column.card_ids]
@@ -59,6 +64,7 @@ class BoardData(BaseModel):
         if any(card_id != card.id for card_id, card in self.cards.items()):
             raise ValueError("each card map key must match its card ID")
         return self
+
 
 class UserCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")

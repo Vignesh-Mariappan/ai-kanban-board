@@ -11,14 +11,19 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [formState, setFormState] = useState(initialFormState);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!formState.title.trim()) {
-      return;
-    }
-    onAdd(formState.title.trim(), formState.details.trim());
+  const close = () => {
     setFormState(initialFormState);
     setIsOpen(false);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const title = formState.title.trim();
+    if (!title) {
+      return;
+    }
+    onAdd(title, formState.details.trim());
+    close();
   };
 
   return (
@@ -46,10 +51,7 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => {
-                setIsOpen(false);
-                setFormState(initialFormState);
-              }}
+              onClick={close}
               className="flex items-center gap-1.5 rounded-full border border-[var(--stroke-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--gray-text)] transition hover:text-[var(--text)]"
             >
               <CloseIcon className="h-3.5 w-3.5" />

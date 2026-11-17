@@ -34,11 +34,11 @@ fi
 
 docker rm "$container_name" >/dev/null 2>&1 || true
 
+set --
 if [ -f "$project_root/.env" ]; then
-  docker run -d --name "$container_name" --env-file "$project_root/.env" -p "$port:8000" --mount "type=bind,source=$database_dir,target=/data" "$image_name"
-else
-  docker run -d --name "$container_name" -p "$port:8000" --mount "type=bind,source=$database_dir,target=/data" "$image_name"
+  set -- --env-file "$project_root/.env"
 fi
+docker run -d --name "$container_name" "$@" -p "$port:8000" --mount "type=bind,source=$database_dir,target=/data" "$image_name"
 
 wait_for_ready
 printf 'App available at http://localhost:%s\n' "$port"

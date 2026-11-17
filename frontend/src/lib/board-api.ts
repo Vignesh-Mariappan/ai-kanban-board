@@ -29,29 +29,19 @@ export const usernameFromAuthHeader = (authorization: string) => {
   return new TextDecoder().decode(bytes).split(":")[0];
 };
 
-const request = async <T>(
-  path: string,
-  init: RequestInit & { headers?: Record<string, string> } = {}
-): Promise<T> => {
-  const response = await fetch(path, init);
-
-  if (!response.ok) {
-    let detail = `Request failed (${response.status}).`;
-    try {
-      const body = (await response.json()) as { detail?: unknown };
-      if (typeof body.detail === "string") {
-        detail = body.detail;
-      }
-    } catch {
-      // Keep the status-based message for non-JSON responses.
+export const errorDetail = async (response: Response, fallback: string) => {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string") {
+      return body.detail;
     }
-    throw new BoardApiError(detail, response.status);
+  } catch {
+    // Keep the status-based message for non-JSON responses.
   }
-
-  return (response.status === 204 ? undefined : await response.json()) as T;
+  return fallback;
 };
 
-const jsonBody = (method: string, body: unknown, authorization?: string) => ({
+export const jsonBody = (method: string, body: unknown, authorization?: string) => ({
   method,
   headers: {
     "Content-Type": "application/json",
@@ -59,6 +49,17 @@ const jsonBody = (method: string, body: unknown, authorization?: string) => ({
   },
   body: JSON.stringify(body),
 });
+
+const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const response = await fetch(path, init);
+
+  if (!response.ok) {
+    const detail = await errorDetail(response, `Request failed (${response.status}).`);
+    throw new BoardApiError(detail, response.status);
+  }
+
+  return (response.status === 204 ? undefined : await response.json()) as T;
+};
 
 const boardPath = (boardId: string) => `/api/boards/${encodeURIComponent(boardId)}`;
 

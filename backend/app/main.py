@@ -38,6 +38,10 @@ DEMO_PASSWORD = "password"
 security = HTTPBasic()
 
 
+def board_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="Board not found")
+
+
 def create_app(
     database_path: Path | None = None,
     seed_path: Path | None = None,
@@ -49,15 +53,14 @@ def create_app(
     static_dir = frontend_static_dir or Path(
         os.environ.get("FRONTEND_STATIC_DIR", PROJECT_ROOT / "frontend" / "out")
     )
+    provider = chat_provider if chat_provider is not None else OpenRouterClient()
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         initialize_database(db_path, board_seed_path, DEMO_USERNAME, DEMO_PASSWORD)
         yield
 
     application = FastAPI(title="Kanban MVP", lifespan=lifespan)
-    application.state.chat_provider = (
-        chat_provider if chat_provider is not None else OpenRouterClient()
-    )
 
     def authenticated_username(
         credentials: Annotated[HTTPBasicCredentials, Depends(security)],
@@ -74,7 +77,7 @@ def create_app(
     def owned_board(username: str, board_id: str) -> dict[str, object]:
         board = load_board(db_path, username, board_id)
         if board is None:
-            raise HTTPException(status_code=404, detail="Board not found")
+            raise board_not_found()
         return board
 
     @application.post("/api/users", status_code=201)
@@ -97,13 +100,13 @@ def create_app(
     ) -> dict[str, str]:
         board = rename_board(db_path, username, board_id, board_name.name)
         if board is None:
-            raise HTTPException(status_code=404, detail="Board not found")
+            raise board_not_found()
         return board
 
     @application.delete("/api/boards/{board_id}", status_code=204)
     def remove_board(board_id: str, username: Username) -> Response:
         if not delete_board(db_path, username, board_id):
-            raise HTTPException(status_code=404, detail="Board not found")
+            raise board_not_found()
         return Response(status_code=204)
 
     @application.get("/api/boards/{board_id}", response_model=BoardData)
@@ -115,7 +118,7 @@ def create_app(
         board_id: str, board_data: BoardData, username: Username
     ) -> dict[str, object]:
         if not replace_board(db_path, username, board_id, board_data):
-            raise HTTPException(status_code=404, detail="Board not found")
+            raise board_not_found()
         return owned_board(username, board_id)
 
     @application.post("/api/boards/{board_id}/chat", response_model=ChatResult)
@@ -123,39 +126,33 @@ def create_app(
         board = owned_board(username, board_id)
 
         try:
-            content = application.state.chat_provider.complete(
-                build_chat_prompt(board, request),
-                json_mode=True,
-            )
+            content = provider.complete(build_chat_prompt(board, request), json_mode=True)
             result = parse_chat_output(content)
         except OpenRouterConfigurationError:
             raise HTTPException(status_code=503, detail="AI service is not configured") from None
         except OpenRouterError as error:
-            raise HTTPException(
-                status_code=502,
-                detail=error.public_message,
-            ) from None
+            raise HTTPException(status_code=502, detail=error.public_message) from None
         except InvalidChatOutput:
             raise HTTPException(status_code=502, detail="AI response was invalid") from None
 
         board_updated = result.board_update is not None
-        try:
-            if board_updated and not replace_board(
-                db_path, username, board_id, result.board_update, expected_board=board
-            ):
-                raise HTTPException(status_code=404, detail="Board not found")
-        except BoardChangedError:
-            raise HTTPException(
-                status_code=409,
-                detail="The board changed while the assistant was responding. Please try again.",
-            ) from None
+        if board_updated:
+            try:
+                saved = replace_board(
+                    db_path, username, board_id, result.board_update, expected_board=board
+                )
+            except BoardChangedError:
+                raise HTTPException(
+                    status_code=409,
+                    detail="The board changed while the assistant was responding. Please try again.",
+                ) from None
+            if not saved:
+                raise board_not_found()
         return ChatResult(response=result.response, board_updated=board_updated)
-
 
     @application.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
-
 
     @application.get("/api/hello")
     def hello() -> dict[str, str]:

@@ -4,6 +4,7 @@ import {
   useEffect,
   useState,
   useSyncExternalStore,
+  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -35,6 +36,53 @@ const notifySessionChanged = () => {
   window.dispatchEvent(new Event(sessionChangeEvent));
 };
 
+const modeText = {
+  "sign-in": {
+    heading: "Sign in",
+    submit: "Sign in",
+    submitting: "Signing in...",
+    passwordAutoComplete: "current-password",
+    switchPrompt: "New here? ",
+    switchLabel: "Create an account",
+  },
+  "sign-up": {
+    heading: "Create account",
+    submit: "Create account",
+    submitting: "Creating account...",
+    passwordAutoComplete: "new-password",
+    switchPrompt: "Already have an account? ",
+    switchLabel: "Sign in instead",
+  },
+};
+
+type Mode = keyof typeof modeText;
+
+const signInErrorMessage = (error: unknown) => {
+  if (error instanceof BoardApiError && error.status === 401) {
+    return "Incorrect username or password.";
+  }
+  if (error instanceof BoardApiError && error.status === 422) {
+    return "Usernames need 3-32 letters, numbers, dots, dashes, or underscores. Passwords need at least 8 characters.";
+  }
+  return error instanceof Error ? error.message : "Unable to sign in. Try again.";
+};
+
+type LoadedSession =
+  | { authHeader: string; boards: BoardSummary[] }
+  | { authHeader: string; error: string };
+
+const labelClass = "block space-y-2 text-sm font-medium text-[var(--text)]";
+const inputClass =
+  "w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--primary-blue)]";
+
+const StatusScreen = ({ message }: { message: string }) => (
+  <main className="flex min-h-screen items-center justify-center px-6">
+    <p role="status" className="text-sm text-[var(--gray-text)]">
+      {message}
+    </p>
+  </main>
+);
+
 type SignInGateProps = {
   children: (boards: BoardSummary[], authHeader: string) => ReactNode;
 };
@@ -45,13 +93,8 @@ export const SignInGate = ({ children }: SignInGateProps) => {
     getSessionSnapshot,
     getServerSnapshot
   );
-  const [loadedSession, setLoadedSession] = useState<{
-    authHeader: string;
-    boards?: BoardSummary[];
-    error?: string;
-  } | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [loadedSession, setLoadedSession] = useState<LoadedSession | null>(null);
+  const [mode, setMode] = useState<Mode>("sign-in");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -85,7 +128,7 @@ export const SignInGate = ({ children }: SignInGateProps) => {
     return () => {
       active = false;
     };
-  }, [authHeader, loadedSession?.authHeader, retryCount]);
+  }, [authHeader, loadedSession?.authHeader]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -105,21 +148,19 @@ export const SignInGate = ({ children }: SignInGateProps) => {
       setLoadedSession({ authHeader: nextAuthHeader, boards });
       notifySessionChanged();
     } catch (loginError) {
-      setError(
-        loginError instanceof BoardApiError && loginError.status === 401
-          ? "Incorrect username or password."
-          : loginError instanceof BoardApiError && loginError.status === 422
-            ? "Usernames need 3-32 letters, numbers, dots, dashes, or underscores. Passwords need at least 8 characters."
-            : loginError instanceof Error
-              ? loginError.message
-              : "Unable to sign in. Try again."
-      );
+      setError(signInErrorMessage(loginError));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const switchMode = (nextMode: typeof mode) => {
+  const editField =
+    (setValue: (value: string) => void) => (event: ChangeEvent<HTMLInputElement>) => {
+      setValue(event.target.value);
+      setError("");
+    };
+
+  const switchMode = (nextMode: Mode) => {
     setMode(nextMode);
     setError("");
     setPassword("");
@@ -137,16 +178,11 @@ export const SignInGate = ({ children }: SignInGateProps) => {
   };
 
   if (authHeader === undefined) {
-    return (
-      <main className="flex min-h-screen items-center justify-center px-6">
-        <p role="status" className="text-sm text-[var(--gray-text)]">
-          Restoring session...
-        </p>
-      </main>
-    );
+    return <StatusScreen message="Restoring session..." />;
   }
 
   if (!authHeader) {
+    const text = modeText[mode];
     return (
       <main className="flex min-h-screen items-center justify-center px-6 py-12">
         <section className="w-full max-w-md rounded-[28px] border border-[var(--stroke)] bg-[var(--surface)] p-8 shadow-[var(--shadow)] sm:p-10">
@@ -157,50 +193,41 @@ export const SignInGate = ({ children }: SignInGateProps) => {
             Kanban Studio
           </h1>
           <h2 className="mt-8 text-base font-semibold text-[var(--text)]">
-            {mode === "sign-in" ? "Sign in" : "Create account"}
+            {text.heading}
           </h2>
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-            <label className="block space-y-2 text-sm font-medium text-[var(--text)]">
+            <label className={labelClass}>
               Username
               <input
                 autoComplete="username"
                 pattern={mode === "sign-up" ? "[A-Za-z0-9_.\\-]{3,32}" : undefined}
                 value={username}
-                onChange={(event) => {
-                  setUsername(event.target.value);
-                  setError("");
-                }}
-                className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--primary-blue)]"
+                onChange={editField(setUsername)}
+                className={inputClass}
                 required
               />
             </label>
-            <label className="block space-y-2 text-sm font-medium text-[var(--text)]">
+            <label className={labelClass}>
               Password
               <input
                 type="password"
-                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                autoComplete={text.passwordAutoComplete}
                 minLength={mode === "sign-up" ? 8 : undefined}
                 value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                  setError("");
-                }}
-                className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--primary-blue)]"
+                onChange={editField(setPassword)}
+                className={inputClass}
                 required
               />
             </label>
             {mode === "sign-up" && (
-              <label className="block space-y-2 text-sm font-medium text-[var(--text)]">
+              <label className={labelClass}>
                 Confirm password
                 <input
                   type="password"
                   autoComplete="new-password"
                   value={confirmPassword}
-                  onChange={(event) => {
-                    setConfirmPassword(event.target.value);
-                    setError("");
-                  }}
-                  className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-raised)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--primary-blue)]"
+                  onChange={editField(setConfirmPassword)}
+                  className={inputClass}
                   required
                 />
               </label>
@@ -215,23 +242,17 @@ export const SignInGate = ({ children }: SignInGateProps) => {
               disabled={isSubmitting}
               className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
             >
-              {mode === "sign-in"
-                ? isSubmitting
-                  ? "Signing in..."
-                  : "Sign in"
-                : isSubmitting
-                  ? "Creating account..."
-                  : "Create account"}
+              {isSubmitting ? text.submitting : text.submit}
             </button>
           </form>
           <p className="mt-6 text-center text-sm text-[var(--gray-text)]">
-            {mode === "sign-in" ? "New here? " : "Already have an account? "}
+            {text.switchPrompt}
             <button
               type="button"
               onClick={() => switchMode(mode === "sign-in" ? "sign-up" : "sign-in")}
               className="font-semibold text-[var(--primary-blue)] hover:underline"
             >
-              {mode === "sign-in" ? "Create an account" : "Sign in instead"}
+              {text.switchLabel}
             </button>
           </p>
         </section>
@@ -240,16 +261,10 @@ export const SignInGate = ({ children }: SignInGateProps) => {
   }
 
   if (loadedSession?.authHeader !== authHeader) {
-    return (
-      <main className="flex min-h-screen items-center justify-center px-6">
-        <p role="status" className="text-sm text-[var(--gray-text)]">
-          Loading your boards...
-        </p>
-      </main>
-    );
+    return <StatusScreen message="Loading your boards..." />;
   }
 
-  if (loadedSession.error || !loadedSession.boards) {
+  if ("error" in loadedSession) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6 py-12">
         <section className="w-full max-w-md rounded-[28px] border border-[var(--stroke)] bg-[var(--surface)] p-8 shadow-[var(--shadow)]">
@@ -257,15 +272,12 @@ export const SignInGate = ({ children }: SignInGateProps) => {
             Unable to load your boards
           </h1>
           <p role="alert" className="mt-4 text-sm text-red-400">
-            {loadedSession.error ?? "The boards response was empty."}
+            {loadedSession.error}
           </p>
           <div className="mt-6 flex gap-3">
             <button
               type="button"
-              onClick={() => {
-                setLoadedSession(null);
-                setRetryCount((count) => count + 1);
-              }}
+              onClick={() => setLoadedSession(null)}
               className="rounded-full bg-[var(--secondary-purple)] px-4 py-2 text-sm font-semibold text-white"
             >
               Retry

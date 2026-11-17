@@ -88,8 +88,7 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
 
     # Table rebuilds need foreign keys off; integrity is checked before each commit.
     connection.execute("PRAGMA foreign_keys = OFF")
-    migrations = sorted(MIGRATIONS_DIRECTORY.glob("*.sql"))
-    for migration in migrations:
+    for migration in sorted(MIGRATIONS_DIRECTORY.glob("*.sql")):
         migration_version = int(migration.name.split("_", 1)[0])
         if migration_version <= version:
             continue
@@ -157,14 +156,14 @@ def _create_board(
     return {"id": board_id, "name": name}
 
 
-def _board_id(connection: sqlite3.Connection, username: str, board_id: str) -> str | None:
+def _owns_board(connection: sqlite3.Connection, username: str, board_id: str) -> bool:
     board = connection.execute(
-        """SELECT boards.id FROM boards
+        """SELECT 1 FROM boards
            JOIN users ON users.id = boards.user_id
            WHERE users.username = ? AND boards.id = ?""",
         (username, board_id),
     ).fetchone()
-    return None if board is None else board["id"]
+    return board is not None
 
 
 def list_boards(database_path: Path, username: str) -> list[dict[str, str]]:
@@ -194,7 +193,7 @@ def rename_board(
     database_path: Path, username: str, board_id: str, name: str
 ) -> dict[str, str] | None:
     with _connection(database_path) as connection:
-        if _board_id(connection, username, board_id) is None:
+        if not _owns_board(connection, username, board_id):
             return None
         connection.execute("UPDATE boards SET name = ? WHERE id = ?", (name, board_id))
         connection.commit()
@@ -203,7 +202,7 @@ def rename_board(
 
 def delete_board(database_path: Path, username: str, board_id: str) -> bool:
     with _connection(database_path) as connection:
-        if _board_id(connection, username, board_id) is None:
+        if not _owns_board(connection, username, board_id):
             return False
         connection.execute("DELETE FROM boards WHERE id = ?", (board_id,))
         connection.commit()
@@ -220,7 +219,6 @@ def _read_board(connection: sqlite3.Connection, board_id: str) -> dict[str, obje
         for column in columns
     ]
     column_by_id = {column["id"]: column for column in result_columns}
-    cards: dict[str, dict[str, str]] = {}
     rows = connection.execute(
         """SELECT cards.id, cards.title, cards.details, cards.column_id
            FROM cards JOIN columns
@@ -229,6 +227,7 @@ def _read_board(connection: sqlite3.Connection, board_id: str) -> dict[str, obje
            ORDER BY columns.position, cards.position""",
         (board_id,),
     ).fetchall()
+    cards: dict[str, dict[str, str]] = {}
     for row in rows:
         cards[row["id"]] = {
             "id": row["id"],
@@ -260,8 +259,9 @@ def load_board(
     database_path: Path, username: str, board_id: str
 ) -> dict[str, object] | None:
     with _connection(database_path) as connection:
-        owned_board_id = _board_id(connection, username, board_id)
-        return None if owned_board_id is None else _read_board(connection, owned_board_id)
+        if not _owns_board(connection, username, board_id):
+            return None
+        return _read_board(connection, board_id)
 
 
 def replace_board(
@@ -275,7 +275,7 @@ def replace_board(
     BoardChangedError instead of saving if the stored board no longer matches it."""
     with _connection(database_path) as connection:
         connection.execute("BEGIN IMMEDIATE")
-        if _board_id(connection, username, board_id) is None:
+        if not _owns_board(connection, username, board_id):
             connection.rollback()
             return False
         if expected_board is not None and _read_board(connection, board_id) != expected_board:
